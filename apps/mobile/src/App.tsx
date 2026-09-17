@@ -3,12 +3,13 @@ import { useAppStore } from './store';
 import { PairingPage } from './pages/PairingPage';
 import { ChatPage } from './pages/ChatPage';
 import { FavoritesPage } from './pages/FavoritesPage';
-import { MessageSquare, Bookmark } from 'lucide-react';
+import { SettingsPage } from './pages/SettingsPage';
+import { MessageSquare, Bookmark, Settings } from 'lucide-react';
 
 export const App: React.FC = () => {
   const { deviceToken } = useAppStore();
   const [paired, setPaired] = useState(!!deviceToken);
-  const [activeTab, setActiveTab] = useState<'chat' | 'favorites'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'favorites' | 'settings'>('chat');
 
   if (!paired) {
     return <PairingPage onPaired={() => setPaired(true)} />;
@@ -20,6 +21,7 @@ export const App: React.FC = () => {
       <div className="flex-1 overflow-hidden">
         {activeTab === 'chat' && <ChatPage />}
         {activeTab === 'favorites' && <FavoritesPage />}
+        {activeTab === 'settings' && <SettingsPage />}
       </div>
 
       {/* iOS 原生底栏导航 TabBar */}
@@ -42,6 +44,16 @@ export const App: React.FC = () => {
         >
           <Bookmark className="w-5 h-5" />
           <span className="text-[10px] font-medium">我的收藏</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('settings')}
+          className={`flex flex-col items-center gap-1 transition-colors ${
+            activeTab === 'settings' ? 'text-blue-600' : 'text-slate-400'
+          }`}
+        >
+          <Settings className="w-5 h-5" />
+          <span className="text-[10px] font-medium">系统设置</span>
         </button>
       </div>
     </div>
