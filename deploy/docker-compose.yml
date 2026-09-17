@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+    container_name: assistant-server
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOST=0.0.0.0
+      - DATABASE_PATH=/app/data/assistant.sqlite
+      - MCP_COMMAND=node
+      - MCP_ENTRYPOINT=/opt/12306-mcp/build/index.js
+      - LOG_LEVEL=info
+    volumes:
+      - assistant-data:/app/data
+      # 挂载受控的 12306 MCP 依赖代码
+      - ./vendor/12306-mcp:/opt/12306-mcp:ro
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+
+volumes:
+  assistant-data:
+    driver: local
