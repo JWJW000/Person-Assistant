@@ -1,19 +1,60 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../store';
 import { TicketCard } from '../components/TicketCard';
-import { Send, Train } from 'lucide-react';
-import { TrainTicket } from '@assistant/contracts';
+import { ErrorCard } from '../components/ErrorCard';
+import { RouteModal, RouteStation } from '../components/RouteModal';
+import { FilterSheet } from '../components/FilterSheet';
+import { Send, Train, SlidersHorizontal } from 'lucide-react';
+import { TrainTicket, TicketQuery } from '@assistant/contracts';
+
+interface ChatMessage {
+  id: string;
+  role: string;
+  text: string;
+  tickets?: TrainTicket[];
+  error?: {
+    code: string;
+    message: string;
+  };
+}
 
 export const ChatPage: React.FC = () => {
   const { serverUrl, deviceToken } = useAppStore();
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<Array<{ id: string; role: string; text: string; tickets?: TrainTicket[] }>>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedTicket, setSelectedTicket] = useState<TrainTicket | null>(null);
+  const [routeStations, setRouteStations] = useState<RouteStation[]>([]);
+  const [routeModalOpen, setRouteModalOpen] = useState(false);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [currentQuery, setCurrentQuery] = useState<Partial<TicketQuery>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const handleViewRoute = (ticket: TrainTicket) => {
+    setSelectedTicket(ticket);
+    // 构造或展示经停站路线信息
+    setRouteStations([
+      {
+        stationNo: 1,
+        stationName: ticket.from.name,
+        arriveTime: '--:--',
+        departureTime: ticket.departureAt.slice(11, 16),
+        stopoverTime: '始发'
+      },
+      {
+        stationNo: 2,
+        stationName: ticket.to.name,
+        arriveTime: ticket.arrivalAt.slice(11, 16),
+        departureTime: '--:--',
+        stopoverTime: '终到'
+      }
+    ]);
+    setRouteModalOpen(true);
+  };
 
   const handleSend = async () => {
     if (!input.trim() || loading) return;
@@ -66,16 +107,48 @@ export const ChatPage: React.FC = () => {
         }
       });
 
-      eventSource.addEventListener('run.completed', () => {
+      eventSource.addEventListener('run.failed', (e: any) => {
+        let code = 'UPSTREAM_BLOCKED';
+        let msg = '12306 上游服务受限或网络开小差，请稍后再试';
+        try {
+          const payload = JSON.parse(e.data)?.payload;
+          if (payload?.code) code = payload.code;
+          if (payload?.message) msg = payload.message;
+        } catch {}
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `err_${Date.now()}`,
+            role: 'assistant',
+            text: '',
+            error: {
+              code,
+              message: `上游 12306 接口响应异常：${msg}。系统已为您保留当前操作，无需重复尝试突破风控。`
+            }
+          }
+        ]);
         eventSource.close();
         setLoading(false);
       });
 
-      eventSource.addEventListener('run.failed', () => {
+      eventSource.addEventListener('run.completed', () => {
         eventSource.close();
         setLoading(false);
       });
-    } catch (err) {
+    } catch (err: any) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `err_${Date.now()}`,
+          role: 'assistant',
+          text: '',
+          error: {
+            code: 'CONNECTION_FAILED',
+            message: `与服务器通信遇到问题：${err?.message || '无法连接'}`
+          }
+        }
+      ]);
       setLoading(false);
     }
   };
@@ -97,9 +170,17 @@ export const ChatPage: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-[#F2F2F7]">
       {/* 头部标题栏 */}
-      <div className="bg-white/80 backdrop-blur-md border-b border-slate-100 px-4 py-3 sticky top-0 z-10 flex items-center gap-2">
-        <Train className="text-blue-600 w-5 h-5" />
-        <span className="font-bold text-base text-slate-800">火车票智能助理</span>
+      <div className="bg-white/80 backdrop-blur-md border-b border-slate-100 px-4 py-3 sticky top-0 z-10 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Train className="text-blue-600 w-5 h-5" />
+          <span className="font-bold text-base text-slate-800">火车票智能助理</span>
+        </div>
+        <button
+          onClick={() => setFilterSheetOpen(true)}
+          className="p-1.5 text-slate-500 hover:text-blue-600 active:scale-95 transition-all"
+        >
+          <SlidersHorizontal className="w-4 h-4" />
+        </button>
       </div>
 
       {/* 消息滚动区域 */}
@@ -118,21 +199,38 @@ export const ChatPage: React.FC = () => {
             key={m.id}
             className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}
           >
-            <div
-              className={`rounded-2xl px-4 py-2.5 max-w-[85%] text-sm ${
-                m.role === 'user'
-                  ? 'bg-blue-600 text-white rounded-br-none'
-                  : 'bg-white text-slate-800 shadow-sm border border-slate-100 rounded-bl-none'
-              }`}
-            >
-              {m.text}
-            </div>
+            {m.text && (
+              <div
+                className={`rounded-2xl px-4 py-2.5 max-w-[85%] text-sm ${
+                  m.role === 'user'
+                    ? 'bg-blue-600 text-white rounded-br-none'
+                    : 'bg-white text-slate-800 shadow-sm border border-slate-100 rounded-bl-none'
+                }`}
+              >
+                {m.text}
+              </div>
+            )}
+
+            {/* 异常卡片展示 (上游风控或接口异常) */}
+            {m.error && (
+              <div className="w-full mt-1">
+                <ErrorCard
+                  title="12306 状态提醒"
+                  code={m.error.code}
+                  message={m.error.message}
+                />
+              </div>
+            )}
 
             {/* 结构化车次卡片列表 */}
             {m.tickets && m.tickets.length > 0 && (
               <div className="w-full mt-2 space-y-2">
                 {m.tickets.map((t) => (
-                  <TicketCard key={t.id} ticket={t} />
+                  <TicketCard
+                    key={t.id}
+                    ticket={t}
+                    onViewRoute={handleViewRoute}
+                  />
                 ))}
               </div>
             )}
@@ -140,6 +238,24 @@ export const ChatPage: React.FC = () => {
         ))}
         <div ref={scrollRef} />
       </div>
+
+      {/* 经停站时刻表弹层 */}
+      <RouteModal
+        isOpen={routeModalOpen}
+        onClose={() => setRouteModalOpen(false)}
+        trainCode={selectedTicket?.trainCode || ''}
+        stations={routeStations}
+      />
+
+      {/* 筛选过滤弹层 */}
+      <FilterSheet
+        isOpen={filterSheetOpen}
+        onClose={() => setFilterSheetOpen(false)}
+        query={currentQuery}
+        onApply={(updated) => {
+          setCurrentQuery((prev) => ({ ...prev, ...updated }));
+        }}
+      />
 
       {/* 底部输入框 */}
       <div className="bg-white border-t border-slate-100 p-3 flex items-center gap-2">
@@ -162,3 +278,4 @@ export const ChatPage: React.FC = () => {
     </div>
   );
 };
+

@@ -5,18 +5,28 @@ import { ArrowRight, Bookmark } from 'lucide-react';
 interface TicketCardProps {
   ticket: TrainTicket;
   onFavorite?: (ticket: TrainTicket) => void;
+  onViewRoute?: (ticket: TrainTicket) => void;
 }
 
-export const TicketCard: React.FC<TicketCardProps> = ({ ticket, onFavorite }) => {
+export const TicketCard: React.FC<TicketCardProps> = ({ ticket, onFavorite, onViewRoute }) => {
   return (
-    <div className="bg-white rounded-2xl p-4 my-2 shadow-sm border border-slate-100 flex flex-col gap-3">
+    <div
+      onClick={() => onViewRoute && onViewRoute(ticket)}
+      className="bg-white rounded-2xl p-4 my-2 shadow-sm border border-slate-100 flex flex-col gap-3 cursor-pointer active:scale-98 transition-transform"
+    >
       {/* 头部：车次与历时 */}
       <div className="flex justify-between items-center text-sm">
-        <span className="font-bold text-lg text-blue-600 tracking-wide">{ticket.trainCode}</span>
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-lg text-blue-600 tracking-wide">{ticket.trainCode}</span>
+          <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-sm">点击看经停</span>
+        </div>
         <span className="text-slate-400 text-xs">历时 {Math.floor(ticket.durationMinutes / 60)}小时{ticket.durationMinutes % 60}分</span>
         {onFavorite && (
           <button
-            onClick={() => onFavorite(ticket)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onFavorite(ticket);
+            }}
             className="text-slate-400 hover:text-amber-500 transition-colors p-1"
           >
             <Bookmark size={18} />
