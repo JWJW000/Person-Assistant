@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../store';
-import { Settings, Shield, Cpu, RefreshCw, LogOut, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Settings, Shield, Cpu, RefreshCw, LogOut, CheckCircle2, AlertCircle, ChevronDown, ListFilter } from 'lucide-react';
 
 export const SettingsPage: React.FC = () => {
   const { serverUrl, deviceToken, setDeviceToken } = useAppStore();
@@ -8,10 +8,81 @@ export const SettingsPage: React.FC = () => {
     baseUrl: 'https://relay.example.com/v1',
     api: 'openai-completions',
     modelId: 'gpt-4o-mini',
-    apiKey: ''
+    apiKey: '',
+    hasKey: false
   });
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ status: 'ok' | 'error'; message: string } | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  useEffect(() => {
+    fetchCurrentConfig();
+  }, []);
+
+  const fetchCurrentConfig = async () => {
+    try {
+      const res = await fetch(`${serverUrl}/v1/settings/model`, {
+        headers: { Authorization: `Bearer ${deviceToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setModelConfig((prev) => ({
+          ...prev,
+          baseUrl: data.baseUrl || prev.baseUrl,
+          api: data.api || prev.api,
+          modelId: data.modelId || prev.modelId,
+          hasKey: Boolean(data.hasKey)
+        }));
+      }
+    } catch {}
+  };
+
+  const handleFetchModels = async () => {
+    setLoadingModels(true);
+    try {
+      const res = await fetch(`${serverUrl}/v1/models/available`, {
+        headers: { Authorization: `Bearer ${deviceToken}` }
+      });
+      const data = await res.json();
+      if (data?.items && data.items.length > 0) {
+        setAvailableModels(data.items);
+      }
+    } catch (err: any) {
+      alert(`获取模型列表失败: ${err?.message || '网络异常'}`);
+    } finally {
+      setLoadingModels(false);
+    }
+  };
+
+  const handleSaveConfig = async () => {
+    setSaveSuccess(false);
+    try {
+      const res = await fetch(`${serverUrl}/v1/settings/model`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${deviceToken}`
+        },
+        body: JSON.stringify({
+          baseUrl: modelConfig.baseUrl,
+          api: modelConfig.api,
+          modelId: modelConfig.modelId,
+          apiKey: modelConfig.apiKey || undefined
+        })
+      });
+
+      if (res.ok) {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+      } else {
+        alert('保存失败，请检查参数');
+      }
+    } catch {
+      alert('保存失败，网络异常');
+    }
+  };
 
   const handleTestConnection = async () => {
     setTesting(true);
@@ -44,7 +115,7 @@ export const SettingsPage: React.FC = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* 设备与凭证卡片 */}
+        {/* 设备与凭据卡片 */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex flex-col gap-3">
           <div className="flex items-center gap-2 text-slate-800 font-semibold text-sm">
             <Shield className="w-4 h-4 text-emerald-600" />
@@ -82,14 +153,53 @@ export const SettingsPage: React.FC = () => {
           )}
         </div>
 
-        {/* 模型中转站卡片 */}
+        {/* 模型中转站与自由切换卡片 */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex flex-col gap-3">
-          <div className="flex items-center gap-2 text-slate-800 font-semibold text-sm">
-            <Cpu className="w-4 h-4 text-blue-600" />
-            <span>大模型中转站配置</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-slate-800 font-semibold text-sm">
+              <Cpu className="w-4 h-4 text-blue-600" />
+              <span>大模型自由切换</span>
+            </div>
+            <button
+              onClick={handleFetchModels}
+              disabled={loadingModels}
+              className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-lg hover:bg-blue-100 transition-colors"
+            >
+              <ListFilter className="w-3 h-3" />
+              <span>{loadingModels ? '拉取中...' : '读取中转站模型'}</span>
+            </button>
           </div>
 
           <div className="space-y-2.5">
+            {/* 当前选用模型 */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-slate-500 font-medium">当前活跃模型 (Model ID)</label>
+              {availableModels.length > 0 ? (
+                <div className="relative">
+                  <select
+                    value={modelConfig.modelId}
+                    onChange={(e) => setModelConfig({ ...modelConfig, modelId: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 appearance-none focus:outline-none focus:border-blue-500"
+                  >
+                    {availableModels.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-2.5 pointer-events-none" />
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  placeholder="手动输入模型名 (如 gpt-4o-mini)"
+                  value={modelConfig.modelId}
+                  onChange={(e) => setModelConfig({ ...modelConfig, modelId: e.target.value })}
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
+                />
+              )}
+            </div>
+
             <div className="flex flex-col gap-1">
               <label className="text-xs text-slate-500 font-medium">中转站 Base URL</label>
               <input
@@ -107,38 +217,41 @@ export const SettingsPage: React.FC = () => {
                 onChange={(e) => setModelConfig({ ...modelConfig, api: e.target.value })}
                 className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
               >
-                <option value="openai-completions">OpenAI Completions</option>
+                <option value="openai-completions">OpenAI Completions (/v1/chat/completions)</option>
                 <option value="openai-responses">OpenAI Responses</option>
-                <option value="anthropic-messages">Anthropic Messages</option>
+                <option value="anthropic-messages">Anthropic Messages (/v1/messages)</option>
               </select>
             </div>
 
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-slate-500 font-medium">模型 ID (Model ID)</label>
-              <input
-                type="text"
-                value={modelConfig.modelId}
-                onChange={(e) => setModelConfig({ ...modelConfig, modelId: e.target.value })}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-slate-500 font-medium">API Key (脱敏仅写)</label>
+              <div className="flex justify-between items-center">
+                <label className="text-xs text-slate-500 font-medium">API Key (脱敏仅写)</label>
+                {modelConfig.hasKey && (
+                  <span className="text-[10px] text-emerald-600 font-medium bg-emerald-50 px-1.5 py-0.5 rounded">
+                    服务器已保存 Key
+                  </span>
+                )}
+              </div>
               <input
                 type="password"
-                placeholder="sk-..."
+                placeholder={modelConfig.hasKey ? '如需修改请输入新 Key，否则留空' : 'sk-...'}
                 value={modelConfig.apiKey}
                 onChange={(e) => setModelConfig({ ...modelConfig, apiKey: e.target.value })}
                 className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
               />
             </div>
 
+            {saveSuccess && (
+              <div className="text-xs text-emerald-600 bg-emerald-50 p-2 rounded-xl text-center">
+                模型配置已成功切换并更新！
+              </div>
+            )}
+
             <button
-              onClick={() => alert('模型配置已在安全沙箱中保存并锁定，仅在服务端保留脱敏凭证。')}
+              onClick={handleSaveConfig}
               className="w-full py-2.5 bg-blue-600 text-white font-semibold text-xs rounded-xl active:scale-98 transition-transform shadow-xs shadow-blue-200 mt-1"
             >
-              保存模型档案
+              保存并应用当前模型
             </button>
           </div>
         </div>
