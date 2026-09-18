@@ -84,9 +84,12 @@ export class TrainService {
       ? query.to.selectedStationCodes
       : this.resolveStations(query.to.name);
 
-    const pairs = this.generateStationPairs(fromStations, toStations);
-    if (pairs.length > maxPairs) {
-      throw new Error(`车站组合过多 (${pairs.length} > ${maxPairs})，请指定具体车站`);
+    let pairs = this.generateStationPairs(fromStations, toStations);
+    const originalRequestedPairs = pairs.length;
+    // 组合过多时回退为城市级查询：12306 上游会自动展开城市下的所有车站
+    const narrowedToCity = pairs.length > maxPairs;
+    if (narrowedToCity) {
+      pairs = [{ from: query.from.name, to: query.to.name }];
     }
 
     const allTickets: TrainTicket[] = [];
@@ -117,7 +120,8 @@ export class TrainService {
     }
 
     if (succeededPairs === 0 && pairs.length > 0) {
-      throw new Error('所有站对查询均失败，未能获取任何车次数据');
+      const firstError = stationDetails.find((d) => d.status === 'failed')?.message || '未知错误';
+      throw new Error(`所有站对查询均失败，未能获取任何车次数据 (${firstError})`);
     }
 
     // 去重: 按 日期 + trainCode + from + to
@@ -135,6 +139,14 @@ export class TrainService {
     const coverageStatus: Coverage['status'] =
       failedPairs === 0 ? 'complete' : succeededPairs > 0 ? 'partial' : 'failed';
 
+    const warnings: string[] = [];
+    if (failedPairs > 0) {
+      warnings.push(`部分站对查询遇到问题 (${failedPairs}/${pairs.length})`);
+    }
+    if (narrowedToCity) {
+      warnings.push(`站对组合过多，已回退为「${query.from.name} → ${query.to.name}」城市级查询`);
+    }
+
     const result: TicketResult = {
       schemaVersion: 1,
       id: `res_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -146,13 +158,13 @@ export class TrainService {
       source: 'mcp:12306',
       coverage: {
         status: coverageStatus,
-        requestedPairs: pairs.length,
+        requestedPairs: originalRequestedPairs,
         succeededPairs,
         failedPairs,
         stationDetails
       },
       origin: options.origin || 'live',
-      warnings: failedPairs > 0 ? [`部分站对查询遇到问题 (${failedPairs}/${pairs.length})`] : [],
+      warnings,
       parentResultId: null
     };
 

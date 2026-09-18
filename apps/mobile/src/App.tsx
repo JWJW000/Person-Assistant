@@ -5,6 +5,7 @@ import { ChatPage } from './pages/ChatPage';
 import { FavoritesPage } from './pages/FavoritesPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { MessageSquare, Bookmark, Settings } from 'lucide-react';
+import { UpdateBanner } from './components/UpdateBanner';
 
 export const App: React.FC = () => {
   const { deviceToken } = useAppStore();
@@ -17,6 +18,7 @@ export const App: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
+      <UpdateBanner />
       {/* 视图切换 */}
       <div className="flex-1 overflow-hidden">
         {activeTab === 'chat' && <ChatPage />}
@@ -25,7 +27,7 @@ export const App: React.FC = () => {
       </div>
 
       {/* iOS 原生底栏导航 TabBar */}
-      <div className="bg-white/95 backdrop-blur-md border-t border-slate-200/80 px-6 py-2 flex justify-around items-center z-20">
+      <div className="safe-bottom bg-white/95 backdrop-blur-md border-t border-slate-200/80 px-6 py-2 flex justify-around items-center z-20">
         <button
           onClick={() => setActiveTab('chat')}
           className={`flex flex-col items-center gap-1 transition-colors ${

@@ -3,12 +3,14 @@ version: '3.8'
 services:
   server:
     build:
-      context: .
+      context: ..
       dockerfile: deploy/Dockerfile
     container_name: assistant-server
     restart: unless-stopped
     ports:
       - "3000:3000"
+    env_file:
+      - ../.env
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -20,7 +22,7 @@ services:
     volumes:
       - assistant-data:/app/data
       # 挂载受控的 12306 MCP 依赖代码
-      - ./vendor/12306-mcp:/opt/12306-mcp:ro
+      - ../vendor/12306-mcp:/opt/12306-mcp:ro
     security_opt:
       - no-new-privileges:true
     read_only: false

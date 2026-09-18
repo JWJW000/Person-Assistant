@@ -1,13 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../store';
-import { Settings, Shield, Cpu, RefreshCw, LogOut, CheckCircle2, AlertCircle, ChevronDown, ListFilter } from 'lucide-react';
+import { Settings, Shield, Cpu, RefreshCw, LogOut, CheckCircle2, AlertCircle, ChevronDown, ListFilter, DownloadCloud } from 'lucide-react';
+import { getInstalledVersion, isAndroidApp } from '../updater';
 
 export const SettingsPage: React.FC = () => {
   const { serverUrl, deviceToken, setDeviceToken } = useAppStore();
+  const [appVersion, setAppVersion] = useState<string>('');
+  const [configLoaded, setConfigLoaded] = useState(false);
   const [modelConfig, setModelConfig] = useState({
-    baseUrl: 'https://relay.example.com/v1',
+    baseUrl: '',
     api: 'openai-completions',
-    modelId: 'gpt-4o-mini',
+    modelId: '',
     apiKey: '',
     hasKey: false
   });
@@ -19,6 +22,11 @@ export const SettingsPage: React.FC = () => {
 
   useEffect(() => {
     fetchCurrentConfig();
+    if (isAndroidApp()) {
+      getInstalledVersion().then((info) => {
+        if (info) setAppVersion(`v${info.versionName} (${info.versionCode})`);
+      });
+    }
   }, []);
 
   const fetchCurrentConfig = async () => {
@@ -36,7 +44,10 @@ export const SettingsPage: React.FC = () => {
           hasKey: Boolean(data.hasKey)
         }));
       }
-    } catch {}
+    } catch {
+    } finally {
+      setConfigLoaded(true);
+    }
   };
 
   const handleFetchModels = async () => {
@@ -108,8 +119,8 @@ export const SettingsPage: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-[#F2F2F7]">
-      <div className="bg-white/80 backdrop-blur-md border-b border-slate-100 px-4 py-3 sticky top-0 z-10 flex items-center gap-2">
+    <div className="flex flex-col h-full min-h-0 bg-[#F2F2F7]">
+      <div className="safe-top bg-white/80 backdrop-blur-md border-b border-slate-100 px-4 py-3 sticky top-0 z-10 flex items-center gap-2">
         <Settings className="text-blue-600 w-5 h-5" />
         <span className="font-bold text-base text-slate-800">系统与模型设置</span>
       </div>
@@ -171,6 +182,10 @@ export const SettingsPage: React.FC = () => {
           </div>
 
           <div className="space-y-2.5">
+            {!configLoaded ? (
+              <div className="text-xs text-slate-400 py-6 text-center">正在读取服务器模型配置...</div>
+            ) : (
+              <>
             {/* 当前选用模型 */}
             <div className="flex flex-col gap-1">
               <label className="text-xs text-slate-500 font-medium">当前活跃模型 (Model ID)</label>
@@ -204,6 +219,7 @@ export const SettingsPage: React.FC = () => {
               <label className="text-xs text-slate-500 font-medium">中转站 Base URL</label>
               <input
                 type="text"
+                placeholder="https://your-relay.example.com/v1"
                 value={modelConfig.baseUrl}
                 onChange={(e) => setModelConfig({ ...modelConfig, baseUrl: e.target.value })}
                 className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-blue-500"
@@ -253,8 +269,30 @@ export const SettingsPage: React.FC = () => {
             >
               保存并应用当前模型
             </button>
+              </>
+            )}
           </div>
         </div>
+
+        {/* 应用更新卡片 */}
+        {isAndroidApp() && (
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex flex-col gap-3">
+            <div className="flex items-center gap-2 text-slate-800 font-semibold text-sm">
+              <DownloadCloud className="w-4 h-4 text-blue-600" />
+              <span>应用更新</span>
+            </div>
+            <div className="text-xs text-slate-500 bg-slate-50 p-3 rounded-xl">
+              当前版本：{appVersion || '读取中...'}
+            </div>
+            <button
+              onClick={() => window.dispatchEvent(new Event('assistant:check-update'))}
+              className="w-full py-2.5 bg-slate-100 text-slate-700 font-semibold text-xs rounded-xl active:scale-98 transition-transform flex items-center justify-center gap-1.5"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              检查更新
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

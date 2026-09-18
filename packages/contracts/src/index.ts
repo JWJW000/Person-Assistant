@@ -90,7 +90,10 @@ export const TrainTicketSchema = z.object({
   arrivalAt: z.string(),
   durationMinutes: z.number(),
   dayDiff: z.number().default(0), // 0: 当日到达, 1: 次日到达
-  seats: z.array(SeatSchema)
+  seats: z.array(SeatSchema),
+  matchLabels: z.array(z.string()).optional(),
+  scheduleReference: z.boolean().optional(),
+  referenceDate: z.string().optional()
 });
 export type TrainTicket = z.infer<typeof TrainTicketSchema>;
 
@@ -120,7 +123,16 @@ export const TicketResultSchema = z.object({
   coverage: CoverageSchema,
   origin: z.enum(['live', 'cache', 'fixture']),
   warnings: z.array(z.string()).default([]),
-  parentResultId: z.string().nullable().default(null)
+  parentResultId: z.string().nullable().default(null),
+  planning: z
+    .object({
+      mode: z.enum(['live', 'schedule_reference']),
+      requestedDate: z.string(),
+      searchedDate: z.string(),
+      saleOpensOn: z.string().optional(),
+      matchSummary: z.string().optional()
+    })
+    .optional()
 });
 export type TicketResult = z.infer<typeof TicketResultSchema>;
 

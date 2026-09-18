@@ -1,18 +1,28 @@
 import { create } from 'zustand';
 
+export interface ConversationItem {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
 interface AppState {
   serverUrl: string;
   deviceToken: string | null;
-  activeConversationId: string | null;
+  activeConversationId: string;
+  conversations: ConversationItem[];
   setServerUrl: (url: string) => void;
   setDeviceToken: (token: string | null) => void;
-  setActiveConversationId: (id: string | null) => void;
+  setActiveConversationId: (id: string) => void;
+  setConversations: (items: ConversationItem[]) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  serverUrl: localStorage.getItem('server_url') || 'http://localhost:3000',
+  serverUrl: localStorage.getItem('server_url') || 'https://train.5wjw.cn',
   deviceToken: localStorage.getItem('device_token') || null,
-  activeConversationId: null,
+  activeConversationId: localStorage.getItem('active_conversation_id') || 'default',
+  conversations: [],
 
   setServerUrl: (url) => {
     localStorage.setItem('server_url', url);
@@ -28,5 +38,10 @@ export const useAppStore = create<AppState>((set) => ({
     set({ deviceToken: token });
   },
 
-  setActiveConversationId: (id) => set({ activeConversationId: id })
+  setActiveConversationId: (id) => {
+    localStorage.setItem('active_conversation_id', id);
+    set({ activeConversationId: id });
+  },
+
+  setConversations: (conversations) => set({ conversations })
 }));

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "default",
+  "description": "默认能力：允许应用内更新插件命令",
+  "windows": ["main"],
+  "permissions": ["android-updater:default"]
+}

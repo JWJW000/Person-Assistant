@@ -37,7 +37,7 @@ export const PairingPage: React.FC<{ onPaired: () => void }> = ({ onPaired }) =>
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen px-6 bg-[#F2F2F7]">
+    <div className="safe-top safe-bottom flex flex-col items-center justify-center min-h-screen px-6 bg-[#F2F2F7]">
       <div className="w-full max-w-sm bg-white rounded-3xl p-6 shadow-sm flex flex-col gap-4">
         <h1 className="text-2xl font-bold text-slate-800 text-center">设备配对</h1>
         <p className="text-xs text-slate-400 text-center mb-2">

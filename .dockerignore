@@ -1,0 +1,15 @@
+**/node_modules
+**/dist
+**/.turbo
+**/target
+**/gen
+**/src-tauri/target
+**/src-tauri/gen
+**/coverage
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+.env
+.env.local
+.git
+vendor

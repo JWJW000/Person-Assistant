@@ -16,7 +16,8 @@ export interface McpBridgeOptions {
 
 // 原始 12306 MCP 返回的数据结构定义 (JWJW000/12306-mcp)
 export interface Raw12306Price {
-  seat_type: string;
+  seat_type?: string;
+  seat_name?: string;
   price?: number | string;
   num?: string | number;
 }
@@ -24,9 +25,11 @@ export interface Raw12306Price {
 export interface Raw12306TicketInfo {
   train_no: string;
   start_train_code: string;
-  from_station_name: string;
+  from_station_name?: string;
+  from_station?: string;
   from_station_telecode?: string;
-  to_station_name: string;
+  to_station_name?: string;
+  to_station?: string;
   to_station_telecode?: string;
   start_time: string; // HH:mm
   arrive_time: string; // HH:mm
@@ -50,11 +53,22 @@ export class McpBridge {
   private client: Client | null = null;
   private transport: StdioClientTransport | null = null;
   private lastCallTime = 0;
+  private connecting: Promise<void> | null = null;
 
   constructor(private options: McpBridgeOptions = {}) {}
 
   public async connect(): Promise<void> {
     if (this.client) return;
+    if (this.connecting) return this.connecting;
+    this.connecting = this.doConnect();
+    try {
+      await this.connecting;
+    } finally {
+      this.connecting = null;
+    }
+  }
+
+  private async doConnect(): Promise<void> {
     const command = this.options.command || 'node';
     const args = this.options.args || (this.options.entrypoint ? [this.options.entrypoint] : []);
 
@@ -119,26 +133,48 @@ export class McpBridge {
     this.lastCallTime = Date.now();
 
     if (!this.client) {
+      await this.connect();
+    }
+
+    if (!this.client) {
       throw new McpBridgeError('MCP_UNAVAILABLE', 'MCP 桥接尚未连接');
     }
 
     let response: any;
     try {
-      response = await this.client.callTool({
-        name: 'get-tickets',
-        arguments: {
-          from_station: fromStation,
-          to_station: toStation,
-          date,
-          format: 'json',
-          limitedNum: 0
-        }
-      });
+      response = await this.callGetTickets(fromStation, toStation, date);
     } catch (err: any) {
-      throw new McpBridgeError('MCP_UNAVAILABLE', `调用 MCP 失败: ${err?.message || err}`, true);
+      // MCP 子进程可能已崩溃或 stdio 已失效，重建连接后重试一次
+      await this.disconnect();
+      try {
+        await this.connect();
+        response = await this.callGetTickets(fromStation, toStation, date);
+      } catch (retryErr: any) {
+        await this.disconnect();
+        throw new McpBridgeError('MCP_UNAVAILABLE', `调用 MCP 失败: ${retryErr?.message || retryErr}`, true);
+      }
     }
 
     return McpBridge.parseTicketsResponse(response, date);
+  }
+
+  private async callGetTickets(fromStation: string, toStation: string, date: string): Promise<any> {
+    if (!this.client) {
+      await this.connect();
+    }
+    if (!this.client) {
+      throw new McpBridgeError('MCP_UNAVAILABLE', 'MCP 桥接尚未连接');
+    }
+    return this.client.callTool({
+      name: 'get-tickets',
+      arguments: {
+        fromStation,
+        toStation,
+        date,
+        format: 'json',
+        limitedNum: 0
+      }
+    });
   }
 
   /**
@@ -152,6 +188,9 @@ export class McpBridge {
     // 检查是否有错误
     if (response.isError) {
       const errText = response.content.map((c: any) => c.text || '').join('\n');
+      if (errText.includes("reading 'result'") || errText.includes('data failed')) {
+        throw new McpBridgeError('UPSTREAM_BLOCKED', `12306 暂未开放 ${queryDate} 的车票预售或该日期无开行计划（全国火车票最长预售期通常为 15 天）`);
+      }
       throw new McpBridgeError('UPSTREAM_BLOCKED', `12306-mcp 上游返回错误: ${errText}`);
     }
 
@@ -160,6 +199,10 @@ export class McpBridge {
       .filter((c: any) => c.type === 'text' && c.text)
       .map((c: any) => c.text)
       .join('\n');
+
+    if (combinedText.includes("reading 'result'") || combinedText.includes('data failed')) {
+      throw new McpBridgeError('UPSTREAM_BLOCKED', `12306 暂未开放 ${queryDate} 的车票预售或该日期无开行计划（全国火车票最长预售期通常为 15 天）`);
+    }
 
     if (combinedText.startsWith('Error:') || combinedText.includes('网络忙') || combinedText.includes('操作过于频繁')) {
       throw new McpBridgeError('UPSTREAM_BLOCKED', `12306 上游错误提示: ${combinedText}`);
@@ -192,7 +235,7 @@ export class McpBridge {
       const priceMinor = McpBridge.parsePriceMinor(p.price);
 
       return {
-        kind: p.seat_type || '其他',
+        kind: p.seat_name || p.seat_type || '其他',
         availability,
         count,
         priceMinor,
@@ -232,11 +275,11 @@ export class McpBridge {
       trainCode: raw.start_train_code,
       trainNo: raw.train_no,
       from: {
-        name: raw.from_station_name,
+        name: raw.from_station_name || raw.from_station || '',
         code: raw.from_station_telecode || ''
       },
       to: {
-        name: raw.to_station_name,
+        name: raw.to_station_name || raw.to_station || '',
         code: raw.to_station_telecode || ''
       },
       departureAt,

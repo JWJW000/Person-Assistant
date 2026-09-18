@@ -37,8 +37,8 @@ export const FavoritesPage: React.FC<{ onSelectQuery?: (q: TicketQuery) => void 
   };
 
   return (
-    <div className="flex flex-col h-screen bg-[#F2F2F7]">
-      <div className="bg-white/80 backdrop-blur-md border-b border-slate-100 px-4 py-3 sticky top-0 z-10 flex items-center gap-2">
+    <div className="flex flex-col h-full min-h-0 bg-[#F2F2F7]">
+      <div className="safe-top bg-white/80 backdrop-blur-md border-b border-slate-100 px-4 py-3 sticky top-0 z-10 flex items-center gap-2">
         <Bookmark className="text-blue-600 w-5 h-5" />
         <span className="font-bold text-base text-slate-800">我的收藏与快照</span>
       </div>

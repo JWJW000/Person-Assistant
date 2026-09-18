@@ -20,14 +20,84 @@ export function buildServer(): { app: any; db: any } {
   // 跨域支持 (为开发和 Tauri WebView 准备)
   app.register(cors, {
     origin: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS']
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Authorization', 'Content-Type', 'Accept', 'Last-Event-ID'],
+    exposedHeaders: ['Content-Type']
+  });
+
+  type RunEventListener = (event: any) => void;
+  const runListeners = new Map<string, Set<RunEventListener>>();
+
+  const subscribeRunEvents = (runId: string, listener: RunEventListener) => {
+    let set = runListeners.get(runId);
+    if (!set) {
+      set = new Set();
+      runListeners.set(runId, set);
+    }
+    set.add(listener);
+    return () => {
+      set!.delete(listener);
+      if (set!.size === 0) runListeners.delete(runId);
+    };
+  };
+
+  const publishRunEvent = (runId: string, event: any) => {
+    const set = runListeners.get(runId);
+    if (!set) return;
+    for (const listener of set) {
+      try {
+        listener(event);
+      } catch {}
+    }
+  };
+
+  const mapEventRow = (row: any) => ({
+    v: 1,
+    runId: row.run_id,
+    seq: row.seq,
+    type: row.type,
+    occurredAt: row.created_at,
+    payload: JSON.parse(row.payload_json)
   });
 
   const mcpBridge = new McpBridge({
     entrypoint: process.env.MCP_ENTRYPOINT
   });
   const trainService = new TrainService(mcpBridge);
-  const agentRuntime = new AgentRuntime(trainService);
+
+  // 中转站配置：优先读取数据库中用户保存的配置，其次回退到环境变量
+  const resolveRelayConfig = () => {
+    let baseUrl = process.env.RELAY_BASE_URL || '';
+    let api = process.env.RELAY_API || 'openai-completions';
+    let modelId = process.env.RELAY_MODEL_ID || '';
+    let apiKey = process.env.RELAY_API_KEY || '';
+    let enabled = true;
+
+    const row = db.prepare('SELECT * FROM model_profiles WHERE id = ?').get('default') as any;
+    if (row) {
+      baseUrl = row.base_url || baseUrl;
+      api = row.api || api;
+      modelId = row.model_id || modelId;
+      if (row.secret_ciphertext) {
+        apiKey = Buffer.from(row.secret_ciphertext, 'base64').toString('utf-8');
+      }
+      enabled = Boolean(row.enabled);
+    }
+
+    if (process.env.AGENT_LLM_ENABLED === 'false') enabled = false;
+
+    return {
+      baseUrl,
+      api,
+      modelId,
+      apiKey,
+      enabled,
+      timeoutMs: parseInt(process.env.RELAY_TIMEOUT_MS || '30000', 10),
+      maxSummaryTickets: parseInt(process.env.MODEL_SUMMARY_MAX_TICKETS || '20', 10)
+    };
+  };
+
+  const agentRuntime = new AgentRuntime(trainService, resolveRelayConfig);
 
   // 1. 健康检查
   app.get('/healthz', async () => {
@@ -71,13 +141,22 @@ export function buildServer(): { app: any; db: any } {
   });
 
   // 设备认证中间件钩子
-  const authenticate = (req: any, reply: any) => {
-    const authHeader = req.headers['authorization'];
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  const authenticate = (req: any, reply: any, opts: { allowQueryToken?: boolean } = {}) => {
+    let authHeader = req.headers['authorization'];
+    // SSE (EventSource) 无法自定义请求头，仅该端点允许通过查询参数回退传递凭证
+    if (
+      opts.allowQueryToken &&
+      (!authHeader || !String(authHeader).startsWith('Bearer ')) &&
+      req.query &&
+      req.query.access_token
+    ) {
+      authHeader = `Bearer ${req.query.access_token}`;
+    }
+    if (!authHeader || !String(authHeader).startsWith('Bearer ')) {
       reply.status(401).send({ error: { code: 'AUTH_REQUIRED', message: '需要有效的设备凭证' } });
       return false;
     }
-    const token = authHeader.slice(7);
+    const token = String(authHeader).slice(7);
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     const device = db.prepare('SELECT * FROM devices WHERE token_hash = ?').get(tokenHash) as any;
 
@@ -111,11 +190,46 @@ export function buildServer(): { app: any; db: any } {
     return { id, title, createdAt: now, updatedAt: now };
   });
 
+  app.delete('/v1/conversations/:id', async (req: any, reply) => {
+    if (!authenticate(req, reply)) return;
+    const { id } = req.params;
+    const now = new Date().toISOString();
+    db.prepare('UPDATE conversations SET deleted_at = ? WHERE id = ?').run(now, id);
+    return { success: true, id };
+  });
+
+  app.patch('/v1/conversations/:id', async (req: any, reply) => {
+    if (!authenticate(req, reply)) return;
+    const { id } = req.params;
+    const { title } = req.body || {};
+    if (title && typeof title === 'string') {
+      const now = new Date().toISOString();
+      db.prepare('UPDATE conversations SET title = ?, updated_at = ? WHERE id = ?').run(title.trim(), now, id);
+    }
+    return { success: true, id };
+  });
+
   app.get('/v1/conversations/:id/messages', async (req: any, reply) => {
     if (!authenticate(req, reply)) return;
     const { id } = req.params;
     const messages = db.prepare('SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC').all(id);
-    return { items: messages.map((m: any) => ({ ...m, parts: JSON.parse(m.parts_json) })) };
+    const resultStmt = db.prepare('SELECT payload_json FROM query_results WHERE run_id = ?');
+    return {
+      items: messages.map((m: any) => {
+        const parts = JSON.parse(m.parts_json);
+        const ticketsPart = Array.isArray(parts) ? parts.find((p: any) => p?.type === 'tickets') : null;
+        let tickets = ticketsPart?.tickets;
+        if ((!tickets || !tickets.length) && m.role === 'assistant' && m.run_id) {
+          const row = resultStmt.get(m.run_id) as any;
+          if (row?.payload_json) {
+            try {
+              tickets = JSON.parse(row.payload_json)?.tickets;
+            } catch {}
+          }
+        }
+        return { ...m, parts, tickets: Array.isArray(tickets) ? tickets : [] };
+      })
+    };
   });
 
   // 4. Run 调度与执行
@@ -130,6 +244,12 @@ export function buildServer(): { app: any; db: any } {
     const { clientRequestId, kind, input } = parsed.data;
     const runId = `run_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const now = new Date().toISOString();
+
+    // 确保会话存在 (客户端可能直接使用 default 等隐式会话 ID)
+    db.prepare(`
+      INSERT OR IGNORE INTO conversations (id, title, created_at, updated_at)
+      VALUES (?, ?, ?, ?)
+    `).run(conversationId, '新的查询与会话', now, now);
 
     // 检查幂等性
     const existing = db.prepare('SELECT * FROM runs WHERE device_id = ? AND client_request_id = ?').get(req.device.id, clientRequestId) as any;
@@ -153,22 +273,67 @@ export function buildServer(): { app: any; db: any } {
           `).run(`msg_${Date.now()}`, conversationId, runId, JSON.stringify([{ type: 'text', text: input.text }]), new Date().toISOString());
         }
 
+        // 读取本会话最近 20 条已完成消息，倒序取出后再正序传给模型
+        const pastRows = db.prepare(`
+          SELECT role, parts_json FROM messages
+          WHERE conversation_id = ? AND run_id <> ? AND status = 'completed'
+          ORDER BY created_at DESC LIMIT 20
+        `).all(conversationId, runId) as any[];
+        pastRows.reverse();
+
+        const history: Array<{ role: 'user' | 'assistant'; text: string }> = [];
+        for (const row of pastRows) {
+          try {
+            const parts = JSON.parse(row.parts_json);
+            const t = parts.find((p: any) => p.type === 'text')?.text || '';
+            if (t) {
+              history.push({ role: row.role as 'user' | 'assistant', text: t });
+            }
+          } catch {}
+        }
+
+        let lastTickets: any[] = [];
         await agentRuntime.executeRun(
           {
             runId,
-            userMessage: input.text || '查票'
+            userMessage: input.text || '查票',
+            currentDate: new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10),
+            history
           },
           (event: any) => {
             db.prepare(`
               INSERT INTO run_events (run_id, seq, type, payload_json, created_at)
               VALUES (?, ?, ?, ?, ?)
             `).run(runId, event.seq, event.type, JSON.stringify(event.payload), event.occurredAt);
+            publishRunEvent(runId, event);
+
+            if (event.type === 'result.ready') {
+              const result = event.payload.result;
+              if (result && result.id) {
+                if (Array.isArray(result.tickets)) lastTickets = result.tickets;
+                db.prepare(`
+                  INSERT OR REPLACE INTO query_results (id, run_id, schema_version, payload_json, fetched_at, parent_id)
+                  VALUES (?, ?, ?, ?, ?, ?)
+                `).run(
+                  result.id,
+                  runId,
+                  result.schemaVersion || 1,
+                  JSON.stringify(result),
+                  result.fetchedAt || new Date().toISOString(),
+                  result.parentResultId || null
+                );
+              }
+            }
 
             if (event.type === 'message.completed') {
+              const parts: any[] = [{ type: 'text', text: event.payload.fullText }];
+              if (lastTickets.length) {
+                parts.push({ type: 'tickets', tickets: lastTickets });
+              }
               db.prepare(`
                 INSERT INTO messages (id, conversation_id, run_id, role, parts_json, status, created_at)
                 VALUES (?, ?, ?, 'assistant', ?, 'completed', ?)
-              `).run(`msg_${Date.now()}`, conversationId, runId, JSON.stringify([{ type: 'text', text: event.payload.fullText }]), new Date().toISOString());
+              `).run(`msg_${Date.now()}`, conversationId, runId, JSON.stringify(parts), new Date().toISOString());
             }
 
             if (event.type === 'run.completed') {
@@ -190,63 +355,138 @@ export function buildServer(): { app: any; db: any } {
     });
   });
 
-  // 5. SSE 事件流 (可恢复)
+  // 5. SSE 事件流 (可恢复)。format=json 供 WebView/代理缓冲时轮询增量。
   app.get('/v1/runs/:id/events', async (req: any, reply) => {
-    if (!authenticate(req, reply)) return;
+    if (!authenticate(req, reply, { allowQueryToken: true })) return;
     const { id: runId } = req.params;
     const after = parseInt(req.query.after || '0', 10);
+    const format = String(req.query.format || '');
 
-    reply.raw.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive'
-    });
-
-    let currentSeq = after;
-    const sendEvent = (event: any) => {
-      reply.raw.write(`id: ${event.seq}\n`);
-      reply.raw.write(`event: ${event.type}\n`);
-      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
-    };
-
-    // 补全历史事件
-    const pastEvents = db.prepare('SELECT * FROM run_events WHERE run_id = ? AND seq > ? ORDER BY seq ASC').all(runId, currentSeq) as any[];
-    for (const e of pastEvents) {
-      sendEvent({
-        v: 1,
-        runId: e.run_id,
-        seq: e.seq,
-        type: e.type,
-        occurredAt: e.created_at,
-        payload: JSON.parse(e.payload_json)
-      });
-      currentSeq = e.seq;
+    if (format === 'json') {
+      const run = db.prepare('SELECT status FROM runs WHERE id = ?').get(runId) as any;
+      const rows = db.prepare(
+        'SELECT * FROM run_events WHERE run_id = ? AND seq > ? ORDER BY seq ASC'
+      ).all(runId, after) as any[];
+      const items = rows.map(mapEventRow);
+      return {
+        status: run?.status || 'unknown',
+        lastSeq: items.length ? items[items.length - 1].seq : after,
+        items
+      };
     }
 
-    // 轮询检查后续事件直至终态
-    const interval = setInterval(() => {
-      const newEvents = db.prepare('SELECT * FROM run_events WHERE run_id = ? AND seq > ? ORDER BY seq ASC').all(runId, currentSeq) as any[];
-      for (const e of newEvents) {
-        sendEvent({
-          v: 1,
-          runId: e.run_id,
-          seq: e.seq,
-          type: e.type,
-          occurredAt: e.created_at,
-          payload: JSON.parse(e.payload_json)
-        });
-        currentSeq = e.seq;
+    // Fastify 5 必须 hijack，否则 async handler 返回后会自动 reply.send() 并关掉 SSE
+    reply.hijack();
+    const raw = reply.raw;
+    try {
+      raw.socket?.setNoDelay?.(true);
+    } catch {}
+
+    const origin = req.headers.origin;
+    raw.statusCode = 200;
+    raw.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    raw.setHeader('Cache-Control', 'no-cache, no-transform');
+    raw.setHeader('Connection', 'keep-alive');
+    raw.setHeader('X-Accel-Buffering', 'no');
+    if (origin) {
+      raw.setHeader('Access-Control-Allow-Origin', origin);
+      raw.setHeader('Access-Control-Allow-Credentials', 'true');
+      raw.setHeader('Vary', 'Origin');
+    }
+    if (typeof (raw as any).flushHeaders === 'function') {
+      (raw as any).flushHeaders();
+    }
+
+    const seen = new Set<number>();
+    let currentSeq = after;
+    const sendEvent = (event: any) => {
+      const seq = Number(event?.seq);
+      if (Number.isFinite(seq)) {
+        if (seen.has(seq)) return;
+        seen.add(seq);
+        if (seq > currentSeq) currentSeq = seq;
+      }
+      try {
+        raw.write(`id: ${event.seq}\n`);
+        raw.write(`event: ${event.type}\n`);
+        raw.write(`data: ${JSON.stringify(event)}\n\n`);
+        if (typeof (raw as any).flush === 'function') {
+          (raw as any).flush();
+        }
+      } catch {}
+    };
+
+    // 心跳 + 2KB 填充，避免 Cloudflare/nginx 把首包缓冲到结束
+    raw.write(': ping\n\n');
+    raw.write(`: ${' '.repeat(2048)}\n\n`);
+
+    await new Promise<void>((resolve) => {
+      let finished = false;
+      let heartbeat: ReturnType<typeof setInterval> | undefined;
+      let poll: ReturnType<typeof setInterval> | undefined;
+      let unsub = () => {};
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        unsub();
+        if (heartbeat) clearInterval(heartbeat);
+        if (poll) clearInterval(poll);
+        try {
+          raw.end();
+        } catch {}
+        resolve();
+      };
+
+      const pushRow = (row: any) => sendEvent(mapEventRow(row));
+
+      unsub = subscribeRunEvents(runId, (event: any) => {
+        sendEvent(event);
+        if (event?.type === 'run.completed' || event?.type === 'run.failed') {
+          finish();
+        }
+      });
+
+      const pastEvents = db.prepare(
+        'SELECT * FROM run_events WHERE run_id = ? AND seq > ? ORDER BY seq ASC'
+      ).all(runId, after) as any[];
+      for (const row of pastEvents) {
+        pushRow(row);
       }
 
-      const run = db.prepare('SELECT status FROM runs WHERE id = ?').get(runId) as any;
-      if (run && (run.status === 'succeeded' || run.status === 'failed' || run.status === 'cancelled')) {
-        clearInterval(interval);
-        reply.raw.end();
+      const existing = db.prepare('SELECT status FROM runs WHERE id = ?').get(runId) as any;
+      if (existing && (existing.status === 'succeeded' || existing.status === 'failed' || existing.status === 'cancelled')) {
+        finish();
+        return;
       }
-    }, 200);
 
-    req.raw.on('close', () => {
-      clearInterval(interval);
+      heartbeat = setInterval(() => {
+        try {
+          raw.write(': ka\n\n');
+        } catch {
+          finish();
+        }
+      }, 15000);
+
+      poll = setInterval(() => {
+        const newEvents = db.prepare(
+          'SELECT * FROM run_events WHERE run_id = ? AND seq > ? ORDER BY seq ASC'
+        ).all(runId, currentSeq) as any[];
+        for (const row of newEvents) {
+          pushRow(row);
+        }
+        const run = db.prepare('SELECT status FROM runs WHERE id = ?').get(runId) as any;
+        if (run && (run.status === 'succeeded' || run.status === 'failed' || run.status === 'cancelled')) {
+          const latest = db.prepare(
+            'SELECT * FROM run_events WHERE run_id = ? AND seq > ? ORDER BY seq ASC'
+          ).all(runId, currentSeq) as any[];
+          for (const row of latest) {
+            pushRow(row);
+          }
+          finish();
+        }
+      }, 400);
+
+      req.raw.on('close', finish);
     });
   });
 

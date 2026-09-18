@@ -1,0 +1,7 @@
+[default]
+description = "Default permissions for the android-updater plugin: version query, in-app APK download and installer invocation."
+permissions = [
+    "allow-get-version-info",
+    "allow-download-and-install",
+    "allow-install-downloaded-apk",
+]

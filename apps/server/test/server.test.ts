@@ -98,4 +98,45 @@ describe('Server HTTP API & Auth Integration', () => {
     expect(list.items).toHaveLength(1);
     expect(list.items[0].title).toBe('北京到洛阳车票');
   });
+
+  it('returns run event deltas via JSON poll', async () => {
+    const device = db.prepare('SELECT id FROM devices LIMIT 1').get() as { id: string };
+    expect(device?.id).toBeTruthy();
+
+    const runId = 'run_stream_test';
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO runs (id, device_id, conversation_id, client_request_id, kind, status, started_at)
+      VALUES (?, ?, ?, ?, 'chat', 'running', ?)
+    `).run(runId, device.id, 'default', 'client_stream_test', now);
+    db.prepare(`
+      INSERT INTO run_events (run_id, seq, type, payload_json, created_at)
+      VALUES (?, 1, 'message.delta', ?, ?)
+    `).run(runId, JSON.stringify({ delta: '你', fullText: '你' }), now);
+    db.prepare(`
+      INSERT INTO run_events (run_id, seq, type, payload_json, created_at)
+      VALUES (?, 2, 'message.delta', ?, ?)
+    `).run(runId, JSON.stringify({ delta: '好', fullText: '你好' }), now);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/v1/runs/${runId}/events?format=json&after=0`,
+      headers: { Authorization: `Bearer ${deviceToken}` }
+    });
+    expect(res.statusCode).toBe(200);
+    const json = JSON.parse(res.payload);
+    expect(json.items).toHaveLength(2);
+    expect(json.items[0].type).toBe('message.delta');
+    expect(json.items[1].payload.fullText).toBe('你好');
+
+    const res2 = await app.inject({
+      method: 'GET',
+      url: `/v1/runs/${runId}/events?format=json&after=1`,
+      headers: { Authorization: `Bearer ${deviceToken}` }
+    });
+    expect(res2.statusCode).toBe(200);
+    const json2 = JSON.parse(res2.payload);
+    expect(json2.items).toHaveLength(1);
+    expect(json2.items[0].seq).toBe(2);
+  });
 });

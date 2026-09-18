@@ -12,5 +12,7 @@ module.exports = konstaConfig({
       }
     }
   },
-  plugins: []
+  plugins: [
+    require('@tailwindcss/typography')
+  ]
 });

@@ -1,13 +1,47 @@
+# dependencies & caches
 node_modules
-dist
 .turbo
+coverage
+.pnpm-store
+
+# build outputs
+dist
+target
+**/target
+gen
+**/gen
+src-tauri/target
+src-tauri/gen
+**/build/
+
+# env, local data, logs
+.env
+.env.*
+!.env.example
 *.sqlite
 *.sqlite-journal
 *.sqlite-wal
-.env
-.env.local
-target
-gen
-src-tauri/target
-src-tauri/gen
-coverage
+*.sqlite-shm
+*.log
+
+# OS / editor
+.DS_Store
+**/.DS_Store
+.idea
+.vscode
+*.swp
+
+# signing & secrets — never commit
+*.keystore
+*.jks
+keystore.properties
+*.pem
+*.key
+*.p12
+id_rsa*
+
+# release artifacts
+*.apk
+*.aab
+release/
+*.ipa

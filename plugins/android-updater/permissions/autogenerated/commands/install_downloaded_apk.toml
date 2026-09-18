@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-install-downloaded-apk"
+description = "Enables the install_downloaded_apk command without any pre-configured scope."
+commands.allow = ["install_downloaded_apk"]
+
+[[permission]]
+identifier = "deny-install-downloaded-apk"
+description = "Denies the install_downloaded_apk command without any pre-configured scope."
+commands.deny = ["install_downloaded_apk"]
