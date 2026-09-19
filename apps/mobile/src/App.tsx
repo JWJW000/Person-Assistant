@@ -45,7 +45,7 @@ export const App: React.FC = () => {
       <UpdateBanner />
 
       {/* 主视图区 (Tab 内存保活架构：切换 Tab 仅切换 display 状态，绝不销毁重载组件) */}
-      <main className="flex-1 overflow-hidden relative">
+      <main className="flex-1 min-h-0 overflow-hidden relative">
         <div className={`h-full w-full ${activeTab === 'chat' ? 'block' : 'hidden'}`}>
           <ChatPage />
         </div>
