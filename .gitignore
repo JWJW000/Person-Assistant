@@ -29,8 +29,6 @@ src-tauri/gen
 *.log.gz
 
 # RuoYi & Vben specific
-.git.upstream_bak
-**/.git.upstream_bak
 .flattened-pom.xml
 application-local.yml
 application-ga.yml
