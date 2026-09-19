@@ -7,7 +7,7 @@ import {
   deleteKnowledgeChunk,
   KnowledgeChunkItem,
 } from '../lib/aiApi';
-import { loginWithRuoYi, fetchCaptcha, CaptchaData } from '../lib/auth';
+import { loginWithRuoYi } from '../lib/auth';
 import { Toast, ToastMessage } from '../components/Toast';
 import {
   Database,
@@ -62,8 +62,6 @@ export const KnowledgePage: React.FC = () => {
   // 快捷登录表单
   const [loginUser, setLoginUser] = useState('admin');
   const [loginPass, setLoginPass] = useState('admin123');
-  const [loginCode, setLoginCode] = useState('');
-  const [captchaData, setCaptchaData] = useState<CaptchaData | null>(null);
   const [loggingIn, setLoggingIn] = useState(false);
 
   // 新建词条表单 (支持普通切片与 QA 问答对)
@@ -82,13 +80,7 @@ export const KnowledgePage: React.FC = () => {
 
   const [expandedChunkId, setExpandedChunkId] = useState<number | null>(null);
 
-  const loadCaptcha = async () => {
-    try {
-      const c = await fetchCaptcha(serverUrl);
-      setCaptchaData(c);
-      setLoginCode('');
-    } catch {}
-  };
+
 
   const handleQuickLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -97,8 +89,6 @@ export const KnowledgePage: React.FC = () => {
       const res = await loginWithRuoYi(serverUrl, {
         username: loginUser.trim(),
         password: loginPass.trim(),
-        code: loginCode.trim(),
-        uuid: captchaData?.uuid || '',
         tenantId: '000000',
       });
       setAccessToken(res.access_token);
@@ -108,7 +98,6 @@ export const KnowledgePage: React.FC = () => {
       loadChunks();
     } catch (err: any) {
       showToast('error', err.message || '登录失败，请检查账号密码');
-      loadCaptcha();
     } finally {
       setLoggingIn(false);
     }
@@ -162,7 +151,6 @@ export const KnowledgePage: React.FC = () => {
     }
     if (!accessToken) {
       setQuickLoginOpen(true);
-      loadCaptcha();
       showToast('info', '写入知识库需要登录系统账号，请先登录');
       return;
     }
@@ -196,7 +184,6 @@ export const KnowledgePage: React.FC = () => {
     } catch (err: any) {
       if (err.message?.includes('登录') || err.message?.includes('401')) {
         setQuickLoginOpen(true);
-        loadCaptcha();
         showToast('error', '登录凭据已失效，请重新登录');
       } else {
         showToast('error', err.message || '词条切片入库失败');
@@ -236,7 +223,6 @@ export const KnowledgePage: React.FC = () => {
     }
     if (!accessToken) {
       setQuickLoginOpen(true);
-      loadCaptcha();
       showToast('info', '写入知识库需登录系统账号，请先登录');
       return;
     }
@@ -265,7 +251,6 @@ export const KnowledgePage: React.FC = () => {
     } catch (err: any) {
       if (err.message?.includes('登录') || err.message?.includes('401')) {
         setQuickLoginOpen(true);
-        loadCaptcha();
         showToast('error', '登录凭据已失效，请重新登录');
       } else {
         showToast('error', err.message || '文档切片入库失败');
@@ -396,7 +381,6 @@ export const KnowledgePage: React.FC = () => {
             <button
               onClick={() => {
                 setQuickLoginOpen(true);
-                loadCaptcha();
               }}
               className="text-xs font-semibold text-[#151515] underline ml-2 shrink-0 cursor-pointer"
             >
@@ -801,34 +785,7 @@ export const KnowledgePage: React.FC = () => {
                 />
               </div>
 
-              {captchaData?.captchaEnabled && (
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-[#757575]">图形计算验证码</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      placeholder="结果"
-                      value={loginCode}
-                      onChange={(e) => setLoginCode(e.target.value)}
-                      className="flex-1 bg-[#FAFAFA] border border-[#EDEDED] rounded-lg px-3 py-2 text-xs text-[#151515] focus:outline-none focus:border-[#151515]"
-                    />
-                    <div
-                      onClick={loadCaptcha}
-                      className="h-8 px-2 rounded-lg bg-[#F5F5F5] border border-[#EDEDED] flex items-center justify-center cursor-pointer hover:bg-[#EAEAEA]"
-                    >
-                      {captchaData.img ? (
-                        <img
-                          src={`data:image/png;base64,${captchaData.img}`}
-                          alt="code"
-                          className="h-6 max-w-[80px] object-contain"
-                        />
-                      ) : (
-                        <span className="text-[10px] text-[#757575]">刷新</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
+
 
               <button
                 type="submit"
