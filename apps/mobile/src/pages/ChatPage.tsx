@@ -779,6 +779,27 @@ export const ChatPage: React.FC = () => {
                         </div>
                       )}
 
+                    {msg.isStreaming && !msg.content ? (
+                      /* AI 正在思考/即将回复的优雅状态 (Thinking State) */
+                      <div className="flex flex-col gap-2.5 py-1 select-none min-w-[200px]">
+                        <div className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                          {/* 律动波浪圆点 */}
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-wave-1" />
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-wave-2" />
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-wave-3" />
+                          </div>
+                          <span className="font-mono text-[11px] text-slate-500">
+                            {activeKbId ? '正在检索知识库并思考回复...' : '正在深度思考与组织回答...'}
+                          </span>
+                        </div>
+                        {/* 极简呼吸骨架占位 */}
+                        <div className="flex flex-col gap-1.5 opacity-60">
+                          <div className="h-2 bg-slate-100 rounded-full w-4/5 animate-pulse" />
+                          <div className="h-2 bg-slate-100 rounded-full w-3/5 animate-pulse delay-150" />
+                        </div>
+                      </div>
+                    ) : (
                       <div className="prose prose-sm max-w-full overflow-hidden text-slate-900 break-words [word-break:break-word] prose-p:my-1">
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
@@ -809,6 +830,7 @@ export const ChatPage: React.FC = () => {
                           <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-slate-900 animate-pulse align-middle" />
                         )}
                       </div>
+                    )}
                     </div>
                   )}
                 </div>
@@ -863,7 +885,7 @@ export const ChatPage: React.FC = () => {
       </div>
 
       {/* 悬浮岛式输入框 (Floating Dock Input) */}
-      <div className="fixed bottom-20 inset-x-0 px-4 pointer-events-none z-20">
+      <div className="fixed bottom-16 inset-x-0 px-4 pointer-events-none z-20 safe-bottom">
         <form
           onSubmit={(e) => {
             e.preventDefault();

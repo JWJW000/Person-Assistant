@@ -44,7 +44,7 @@ export const App: React.FC = () => {
     <div className="flex flex-col h-screen overflow-hidden bg-[#F8FAFC] text-slate-900 antialiased selection:bg-slate-900 selection:text-white">
       <UpdateBanner />
 
-      {/* 主视图区 (Tab 内存保活架构：切换 Tab 仅切换 display 状态，绝不销毁重载组件，彻底杜绝内容闪烁) */}
+      {/* 主视图区 (Tab 内存保活架构：切换 Tab 仅切换 display 状态，绝不销毁重载组件) */}
       <main className="flex-1 overflow-hidden relative">
         <div className={`h-full w-full ${activeTab === 'chat' ? 'block' : 'hidden'}`}>
           <ChatPage />
@@ -57,46 +57,46 @@ export const App: React.FC = () => {
         </div>
       </main>
 
-      {/* 现代悬浮胶囊底栏 (Floating Island Dock) */}
-      <div className="fixed bottom-4 inset-x-0 flex justify-center items-center pointer-events-none z-30 safe-bottom">
-        <nav className="pointer-events-auto bg-white/90 backdrop-blur-2xl border border-slate-200/90 shadow-[0_12px_40px_rgba(15,23,42,0.08),0_1px_3px_rgba(15,23,42,0.04)] p-1.5 rounded-2xl flex items-center gap-1 ring-1 ring-slate-900/[0.04] transition-all">
+      {/* 固定在屏幕底部的标准移动端底栏 (Fixed at Bottom with safe-bottom) */}
+      <nav className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-xl border-t border-slate-200 z-30 safe-bottom">
+        <div className="flex items-center justify-around h-14 max-w-lg mx-auto px-4">
           <button
             onClick={() => setActiveTab('chat')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${
+            className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-colors cursor-pointer ${
               activeTab === 'chat'
-                ? 'bg-slate-900 text-white shadow-xs scale-[1.02]'
-                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/80 active:scale-95'
+                ? 'text-slate-900 font-semibold'
+                : 'text-slate-400 hover:text-slate-600'
             }`}
           >
             <MessageSquare className="w-4 h-4" />
-            <span>智能问答</span>
+            <span className="text-[11px]">智能问答</span>
           </button>
 
           <button
             onClick={() => setActiveTab('knowledge')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${
+            className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-colors cursor-pointer ${
               activeTab === 'knowledge'
-                ? 'bg-slate-900 text-white shadow-xs scale-[1.02]'
-                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/80 active:scale-95'
+                ? 'text-slate-900 font-semibold'
+                : 'text-slate-400 hover:text-slate-600'
             }`}
           >
             <Database className="w-4 h-4" />
-            <span>知识库管理</span>
+            <span className="text-[11px]">知识库管理</span>
           </button>
 
           <button
             onClick={() => setActiveTab('settings')}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${
+            className={`flex flex-col items-center justify-center gap-1 flex-1 py-1 transition-colors cursor-pointer ${
               activeTab === 'settings'
-                ? 'bg-slate-900 text-white shadow-xs scale-[1.02]'
-                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/80 active:scale-95'
+                ? 'text-slate-900 font-semibold'
+                : 'text-slate-400 hover:text-slate-600'
             }`}
           >
             <Settings className="w-4 h-4" />
-            <span>系统设置</span>
+            <span className="text-[11px]">系统设置</span>
           </button>
-        </nav>
-      </div>
+        </div>
+      </nav>
     </div>
   );
 };

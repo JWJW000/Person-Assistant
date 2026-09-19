@@ -40,6 +40,8 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -55,6 +57,17 @@ import java.util.concurrent.TimeUnit;
 @RestController
 @RequestMapping("/auth")
 public class AuthController {
+    /**
+     * 获取系统租户列表接口 (单租户模式默认返回未启用，消除前端 404 告警)
+     */
+    @GetMapping("/tenant/list")
+    public R<Map<String, Object>> tenantList() {
+        Map<String, Object> data = new HashMap<>();
+        data.put("tenantEnabled", false);
+        data.put("voList", List.of());
+        return R.ok(data);
+    }
+
 
     private final SocialProperties socialProperties;
     private final SysLoginService loginService;
