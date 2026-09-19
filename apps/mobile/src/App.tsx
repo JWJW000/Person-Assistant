@@ -9,11 +9,12 @@ import { MessageSquare, Database, Settings } from 'lucide-react';
 import { UpdateBanner } from './components/UpdateBanner';
 
 export const App: React.FC = () => {
-  const { accessToken, deviceToken } = useAppStore();
+  const { accessToken } = useAppStore();
   const [authMode, setAuthMode] = useState<'login' | 'pair'>('login');
   const [activeTab, setActiveTab] = useState<'chat' | 'knowledge' | 'settings'>('chat');
 
-  const isAuthenticated = Boolean(accessToken || deviceToken);
+  // 严格要求：进入应用前必须先完成系统账号登录
+  const isAuthenticated = Boolean(accessToken);
 
   if (!isAuthenticated) {
     if (authMode === 'pair') {
@@ -23,7 +24,7 @@ export const App: React.FC = () => {
           <div className="fixed bottom-6 left-0 right-0 text-center z-30">
             <button
               onClick={() => setAuthMode('login')}
-              className="text-xs text-[#757575] hover:text-[#151515] font-medium bg-white px-4 py-2 rounded-lg border border-[#EDEDED] shadow-xs"
+              className="text-xs text-slate-600 hover:text-slate-900 font-medium bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-xs active:scale-95 transition-all"
             >
               返回账号密码登录 &rarr;
             </button>
@@ -40,7 +41,7 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-white text-[#151515] antialiased">
+    <div className="flex flex-col h-screen overflow-hidden bg-[#F8FAFC] text-slate-900 antialiased selection:bg-slate-900 selection:text-white">
       <UpdateBanner />
 
       {/* 主视图区 */}
@@ -50,44 +51,46 @@ export const App: React.FC = () => {
         {activeTab === 'settings' && <SettingsPage />}
       </main>
 
-      {/* 极简底栏导航 (ui-skills standard tabbar) */}
-      <nav className="safe-bottom bg-white border-t border-[#EDEDED] px-4 py-2 flex justify-around items-center z-20">
-        <button
-          onClick={() => setActiveTab('chat')}
-          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-lg transition-colors cursor-pointer ${
-            activeTab === 'chat'
-              ? 'text-[#151515] font-medium'
-              : 'text-[#A5A5A5] hover:text-[#757575]'
-          }`}
-        >
-          <MessageSquare className="w-5 h-5" />
-          <span className="text-[11px]">智能对话</span>
-        </button>
+      {/* 现代悬浮胶囊底栏 (Floating Island Dock) */}
+      <div className="fixed bottom-4 inset-x-0 flex justify-center items-center pointer-events-none z-30 safe-bottom">
+        <nav className="pointer-events-auto bg-white/90 backdrop-blur-2xl border border-slate-200/90 shadow-[0_12px_40px_rgba(15,23,42,0.08),0_1px_3px_rgba(15,23,42,0.04)] p-1.5 rounded-2xl flex items-center gap-1 ring-1 ring-slate-900/[0.04] transition-all">
+          <button
+            onClick={() => setActiveTab('chat')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${
+              activeTab === 'chat'
+                ? 'bg-slate-900 text-white shadow-xs scale-[1.02]'
+                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/80 active:scale-95'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4" />
+            <span>智能问答</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('knowledge')}
-          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-lg transition-colors cursor-pointer ${
-            activeTab === 'knowledge'
-              ? 'text-[#151515] font-medium'
-              : 'text-[#A5A5A5] hover:text-[#757575]'
-          }`}
-        >
-          <Database className="w-5 h-5" />
-          <span className="text-[11px]">知识库管理</span>
-        </button>
+          <button
+            onClick={() => setActiveTab('knowledge')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${
+              activeTab === 'knowledge'
+                ? 'bg-slate-900 text-white shadow-xs scale-[1.02]'
+                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/80 active:scale-95'
+            }`}
+          >
+            <Database className="w-4 h-4" />
+            <span>知识库管理</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('settings')}
-          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-lg transition-colors cursor-pointer ${
-            activeTab === 'settings'
-              ? 'text-[#151515] font-medium'
-              : 'text-[#A5A5A5] hover:text-[#757575]'
-          }`}
-        >
-          <Settings className="w-5 h-5" />
-          <span className="text-[11px]">系统设置</span>
-        </button>
-      </nav>
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all duration-150 cursor-pointer ${
+              activeTab === 'settings'
+                ? 'bg-slate-900 text-white shadow-xs scale-[1.02]'
+                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/80 active:scale-95'
+            }`}
+          >
+            <Settings className="w-4 h-4" />
+            <span>系统设置</span>
+          </button>
+        </nav>
+      </div>
     </div>
   );
 };

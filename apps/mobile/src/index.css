@@ -4,38 +4,34 @@
 
 @layer base {
   :root {
-    --page-default: #FFFFFF;
-    --surface-default: #FFFFFF;
-    --surface-subtle: #F5F5F5;
-    --fill-subtle: #FAFAFA;
-    --fill-strong: #F5F5F5;
-    --fill-inverse: #151515;
-    --content-primary: #151515;
-    --content-secondary: #757575;
-    --content-muted: #A5A5A5;
-    --content-extra-muted: #E5E5E5;
-    --color-line-default: #EDEDED;
+    --bg-page: #F8FAFC;
+    --bg-card: #FFFFFF;
+    --border-subtle: #E2E8F0;
+    --border-strong: #CBD5E1;
+    --text-primary: #0F172A;
+    --text-secondary: #64748B;
+    --text-muted: #94A3B8;
   }
 
   html,
   body,
   #root {
     height: 100%;
-    background-color: var(--page-default);
-    color: var(--content-primary);
+    background-color: #F8FAFC;
+    color: #0F172A;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Inter Variable", "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter Variable", system-ui, sans-serif;
     margin: 0;
     padding: 0;
     -webkit-tap-highlight-color: transparent;
   }
 }
 
-/* 安全区支持 */
+/* 安全区适配 */
 .safe-top {
   padding-top: max(env(safe-area-inset-top, 0px), 12px);
 }
@@ -49,6 +45,12 @@
   padding-right: env(safe-area-inset-right, 0px);
 }
 
+/* 科技感点阵微纹理背景 (Subtle Dot Grid) - 极轻淡雅，告别空白死板 */
+.bg-dot-grid {
+  background-image: radial-gradient(rgba(148, 163, 184, 0.25) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
 /* 细腻极简滚动条 */
 ::-webkit-scrollbar {
   width: 3px;
@@ -58,14 +60,24 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #E5E5E5;
+  background: #CBD5E1;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #C5C5C5;
+  background: #94A3B8;
 }
 
-/* Markdown 内容与超长字符防溢出安全限制 */
+/* 呼吸灯微动画 */
+@keyframes breathe {
+  0%, 100% { opacity: 0.8; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.92); }
+}
+
+.animate-breathe {
+  animation: breathe 2.5s ease-in-out infinite;
+}
+
+/* Prose 防溢出全局安全锁 */
 .prose {
   max-width: 100% !important;
   word-break: break-word;
@@ -75,16 +87,8 @@
 .prose pre {
   max-width: 100% !important;
   overflow-x: auto !important;
-  white-space: pre !important;
 }
 
 .prose code {
   word-break: break-all !important;
-  white-space: pre-wrap !important;
-}
-
-.prose table {
-  display: block;
-  max-width: 100% !important;
-  overflow-x: auto !important;
 }
