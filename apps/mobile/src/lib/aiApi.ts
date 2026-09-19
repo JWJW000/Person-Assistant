@@ -305,3 +305,94 @@ export async function streamAiChat(options: StreamChatOptions): Promise<void> {
     onError(err);
   }
 }
+
+export interface KnowledgeChunkItem {
+  id: number;
+  kbId: number;
+  docId?: number;
+  chunkOrder: number;
+  content: string;
+  tokenCount: number;
+  createTime?: string;
+}
+
+/**
+ * 分页查询切片明细列表
+ */
+export async function fetchKnowledgeChunks(
+  serverUrl: string,
+  token: string | null,
+  kbId: number,
+  pageNum = 1,
+  pageSize = 50
+): Promise<{ rows: KnowledgeChunkItem[]; total: number }> {
+  if (!token) return { rows: [], total: 0 };
+  try {
+    const url = `${getBaseUrl(serverUrl)}/ai/knowledge/chunks/${kbId}?pageNum=${pageNum}&pageSize=${pageSize}`;
+    const res = await fetch(url, {
+      headers: getHeaders(token),
+    });
+    const json = await res.json();
+    if (json.code === 200 && json.data) {
+      return {
+        rows: json.data.rows || [],
+        total: json.data.total || 0,
+      };
+    }
+  } catch (err) {
+    console.warn('获取切片列表异常:', err);
+  }
+  return { rows: [], total: 0 };
+}
+
+/**
+ * 文本或文档内容切片并执行 1536 维向量入库 (pgvector)
+ */
+export async function chunkTextAndSave(
+  serverUrl: string,
+  token: string | null,
+  params: {
+    kbId: number;
+    title: string;
+    content: string;
+    chunkSize?: number;
+    chunkOverlap?: number;
+  }
+): Promise<{ chunkCount: number }> {
+  if (!token) {
+    throw new Error('请先登录后再进行知识库切片入库');
+  }
+  const url = `${getBaseUrl(serverUrl)}/ai/knowledge/chunk/text`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: getHeaders(token),
+    body: JSON.stringify(params),
+  });
+  const json = await res.json();
+  if (json.code === 200 && json.data) {
+    return json.data;
+  }
+  throw new Error(json.msg || '切片入库失败');
+}
+
+/**
+ * 删除单个切片
+ */
+export async function deleteKnowledgeChunk(
+  serverUrl: string,
+  token: string | null,
+  chunkId: number
+): Promise<boolean> {
+  if (!token) return false;
+  try {
+    const url = `${getBaseUrl(serverUrl)}/ai/knowledge/chunk/${chunkId}`;
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: getHeaders(token),
+    });
+    const json = await res.json();
+    return json.code === 200;
+  } catch {
+    return false;
+  }
+}

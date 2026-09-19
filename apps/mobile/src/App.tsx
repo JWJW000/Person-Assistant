@@ -3,15 +3,15 @@ import { useAppStore } from './store';
 import { LoginPage } from './pages/LoginPage';
 import { PairingPage } from './pages/PairingPage';
 import { ChatPage } from './pages/ChatPage';
-import { FavoritesPage } from './pages/FavoritesPage';
+import { KnowledgePage } from './pages/KnowledgePage';
 import { SettingsPage } from './pages/SettingsPage';
-import { MessageSquare, Bookmark, Settings } from 'lucide-react';
+import { MessageSquare, Database, Settings } from 'lucide-react';
 import { UpdateBanner } from './components/UpdateBanner';
 
 export const App: React.FC = () => {
   const { accessToken, deviceToken } = useAppStore();
   const [authMode, setAuthMode] = useState<'login' | 'pair'>('login');
-  const [activeTab, setActiveTab] = useState<'chat' | 'favorites' | 'settings'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'knowledge' | 'settings'>('chat');
 
   const isAuthenticated = Boolean(accessToken || deviceToken);
 
@@ -46,7 +46,7 @@ export const App: React.FC = () => {
       {/* 主视图区 */}
       <main className="flex-1 overflow-hidden relative">
         {activeTab === 'chat' && <ChatPage />}
-        {activeTab === 'favorites' && <FavoritesPage />}
+        {activeTab === 'knowledge' && <KnowledgePage />}
         {activeTab === 'settings' && <SettingsPage />}
       </main>
 
@@ -65,15 +65,15 @@ export const App: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab('favorites')}
+          onClick={() => setActiveTab('knowledge')}
           className={`flex flex-col items-center gap-1 py-1 px-3 rounded-lg transition-colors cursor-pointer ${
-            activeTab === 'favorites'
+            activeTab === 'knowledge'
               ? 'text-[#151515] font-medium'
               : 'text-[#A5A5A5] hover:text-[#757575]'
           }`}
         >
-          <Bookmark className="w-5 h-5" />
-          <span className="text-[11px]">知识收藏</span>
+          <Database className="w-5 h-5" />
+          <span className="text-[11px]">知识库管理</span>
         </button>
 
         <button
