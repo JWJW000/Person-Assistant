@@ -53,7 +53,15 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  serverUrl: localStorage.getItem('server_url') || 'https://ai.5wjw.cn',
+  serverUrl: (() => {
+    const saved = localStorage.getItem('server_url');
+    // 如果存储了旧版 fastify 查票地址，自动无缝升级迁移至 AI 后端主地址
+    if (!saved || saved.includes('train.5wjw.cn')) {
+      localStorage.setItem('server_url', 'https://ai.5wjw.cn');
+      return 'https://ai.5wjw.cn';
+    }
+    return saved;
+  })(),
   accessToken: localStorage.getItem('access_token') || null,
   deviceToken: localStorage.getItem('device_token') || null,
   currentUser: localStorage.getItem('current_user') || null,

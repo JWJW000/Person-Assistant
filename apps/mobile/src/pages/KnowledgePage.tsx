@@ -7,6 +7,8 @@ import {
   deleteKnowledgeChunk,
   KnowledgeChunkItem,
 } from '../lib/aiApi';
+import { loginWithRuoYi, fetchCaptcha, CaptchaData } from '../lib/auth';
+import { Toast, ToastMessage } from '../components/Toast';
 import {
   Database,
   Plus,
@@ -19,20 +21,49 @@ import {
   X,
   Layers,
   ArrowRight,
+  LogIn,
 } from 'lucide-react';
 
 export const KnowledgePage: React.FC = () => {
-  const { serverUrl, accessToken, activeKbId, setActiveKbId, knowledgeBases, setKnowledgeBases } =
-    useAppStore();
+  const {
+    serverUrl,
+    accessToken,
+    setAccessToken,
+    setCurrentUser,
+    activeKbId,
+    setActiveKbId,
+    knowledgeBases,
+    setKnowledgeBases,
+  } = useAppStore();
 
   const [chunks, setChunks] = useState<KnowledgeChunkItem[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [kbDropdownOpen, setKbDropdownOpen] = useState(false);
 
+  // Toast 统一轻量消息提示 (废除所有 alert)
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((type: 'success' | 'error' | 'info', text: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ id: String(Date.now()), type, text });
+    toastTimerRef.current = setTimeout(() => {
+      setToast(null);
+    }, 3500);
+  }, []);
+
   // 弹窗状态
   const [textModalOpen, setTextModalOpen] = useState(false);
   const [fileModalOpen, setFileModalOpen] = useState(false);
+  const [quickLoginOpen, setQuickLoginOpen] = useState(false);
+
+  // 快捷登录表单 (在凭证过期时无需跳出当前页面)
+  const [loginUser, setLoginUser] = useState('admin');
+  const [loginPass, setLoginPass] = useState('admin123');
+  const [loginCode, setLoginCode] = useState('');
+  const [captchaData, setCaptchaData] = useState<CaptchaData | null>(null);
+  const [loggingIn, setLoggingIn] = useState(false);
 
   // 新建词条表单
   const [entryTitle, setEntryTitle] = useState('');
@@ -47,6 +78,38 @@ export const KnowledgePage: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [expandedChunkId, setExpandedChunkId] = useState<number | null>(null);
+
+  const loadCaptcha = async () => {
+    try {
+      const c = await fetchCaptcha(serverUrl);
+      setCaptchaData(c);
+      setLoginCode('');
+    } catch {}
+  };
+
+  const handleQuickLogin = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setLoggingIn(true);
+    try {
+      const res = await loginWithRuoYi(serverUrl, {
+        username: loginUser.trim(),
+        password: loginPass.trim(),
+        code: loginCode.trim(),
+        uuid: captchaData?.uuid || '',
+        tenantId: '000000',
+      });
+      setAccessToken(res.access_token);
+      setCurrentUser(loginUser.trim());
+      setQuickLoginOpen(false);
+      showToast('success', '账号登录成功，凭证已刷新');
+      loadChunks();
+    } catch (err: any) {
+      showToast('error', err.message || '登录失败，请检查账号密码');
+      loadCaptcha();
+    } finally {
+      setLoggingIn(false);
+    }
+  };
 
   // 1. 加载知识库列表
   const loadBases = useCallback(async () => {
@@ -91,11 +154,17 @@ export const KnowledgePage: React.FC = () => {
   const handleSaveTextEntry = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!activeKbId) {
-      alert('请先选择一个知识库');
+      showToast('info', '请先在上方选择一个知识库');
+      return;
+    }
+    if (!accessToken) {
+      setQuickLoginOpen(true);
+      loadCaptcha();
+      showToast('info', '写入知识库需要登录系统账号，请先登录');
       return;
     }
     if (!entryContent.trim()) {
-      alert('请输入词条或正文内容');
+      showToast('info', '请输入词条或正文内容');
       return;
     }
 
@@ -109,13 +178,19 @@ export const KnowledgePage: React.FC = () => {
         chunkOverlap: selectedKb?.chunkOverlap || 50,
       });
 
-      alert(`切片入库成功！共生成 ${res.chunkCount} 个 1536 维向量切片并写入 pgvector`);
+      showToast('success', `切片入库成功！共生成 ${res.chunkCount} 个向量切片写入 pgvector`);
       setTextModalOpen(false);
       setEntryTitle('');
       setEntryContent('');
       loadChunks();
     } catch (err: any) {
-      alert(err.message || '词条切片入库失败');
+      if (err.message?.includes('登录') || err.message?.includes('401')) {
+        setQuickLoginOpen(true);
+        loadCaptcha();
+        showToast('error', '登录凭据已失效，请重新登录');
+      } else {
+        showToast('error', err.message || '词条切片入库失败');
+      }
     } finally {
       setSubmittingText(false);
     }
@@ -134,9 +209,10 @@ export const KnowledgePage: React.FC = () => {
     reader.onload = (event) => {
       const text = (event.target?.result as string) || '';
       setFileContent(text);
+      showToast('info', `已读取文档「${file.name}」，共 ${text.length} 字符`);
     };
     reader.onerror = () => {
-      alert('读取本地文件失败，请确保文件编码为 UTF-8');
+      showToast('error', '读取本地文件失败，请确保文件编码为 UTF-8');
     };
     reader.readAsText(file);
   };
@@ -145,11 +221,17 @@ export const KnowledgePage: React.FC = () => {
   const handleSaveFileEntry = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!activeKbId) {
-      alert('请先选择一个知识库');
+      showToast('info', '请先在上方选择一个知识库');
+      return;
+    }
+    if (!accessToken) {
+      setQuickLoginOpen(true);
+      loadCaptcha();
+      showToast('info', '写入知识库需登录系统账号，请先登录');
       return;
     }
     if (!fileContent.trim()) {
-      alert('文档内容为空或尚未读取完成');
+      showToast('info', '文档内容为空或尚未读取完成');
       return;
     }
 
@@ -163,14 +245,20 @@ export const KnowledgePage: React.FC = () => {
         chunkOverlap: selectedKb?.chunkOverlap || 50,
       });
 
-      alert(`文档自动切分入库完成！成功向量化生成 ${res.chunkCount} 个切片并存入知识库`);
+      showToast('success', `文档切分成功！生成 ${res.chunkCount} 个切片并完成向量化入库`);
       setFileModalOpen(false);
       setSelectedFile(null);
       setFileTitle('');
       setFileContent('');
       loadChunks();
     } catch (err: any) {
-      alert(err.message || '文档切片入库失败');
+      if (err.message?.includes('登录') || err.message?.includes('401')) {
+        setQuickLoginOpen(true);
+        loadCaptcha();
+        showToast('error', '登录凭据已失效，请重新登录');
+      } else {
+        showToast('error', err.message || '文档切片入库失败');
+      }
     } finally {
       setSubmittingFile(false);
     }
@@ -181,14 +269,18 @@ export const KnowledgePage: React.FC = () => {
     if (!confirm('确定删除该切片吗？删除后将无法通过向量余弦检索召回。')) return;
     try {
       await deleteKnowledgeChunk(serverUrl, accessToken, id);
+      showToast('success', '切片已删除');
       loadChunks();
     } catch (err: any) {
-      alert('删除切片失败');
+      showToast('error', '删除切片失败');
     }
   };
 
   return (
-    <div className="flex flex-col h-full bg-white text-[#151515] antialiased overflow-hidden">
+    <div className="flex flex-col h-full bg-white text-[#151515] antialiased overflow-hidden relative">
+      {/* 优雅轻量全局 Toast 提示 (无阻塞) */}
+      <Toast toast={toast} onClose={() => setToast(null)} />
+
       {/* 顶部标题栏与知识库切换 */}
       <header className="safe-top bg-white border-b border-[#EDEDED] px-4 py-2.5 flex flex-col gap-2 z-20 sticky top-0">
         <div className="flex items-center justify-between">
@@ -286,6 +378,22 @@ export const KnowledgePage: React.FC = () => {
 
       {/* 知识库概览与切片流 */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 pb-28">
+        {/* 未登录系统账号时的温和提醒横条 */}
+        {!accessToken && (
+          <div className="p-3 rounded-xl border border-[#EDEDED] bg-[#FAFAFA] flex items-center justify-between text-xs">
+            <span className="text-[#757575]">当前为离线或只读模式，录入与切片需登录账号</span>
+            <button
+              onClick={() => {
+                setQuickLoginOpen(true);
+                loadCaptcha();
+              }}
+              className="text-xs font-semibold text-[#151515] underline ml-2 shrink-0 cursor-pointer"
+            >
+              立即登录
+            </button>
+          </div>
+        )}
+
         {/* Bento 知识库规格卡片 */}
         <div className="bg-white border border-[#EDEDED] rounded-xl p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.02)] flex flex-col gap-2.5">
           <div className="flex items-center justify-between text-xs font-mono text-[#A5A5A5] uppercase tracking-wider">
@@ -472,7 +580,7 @@ export const KnowledgePage: React.FC = () => {
             <div className="flex items-center justify-between border-b border-[#EDEDED] pb-3">
               <div className="flex flex-col">
                 <span className="text-sm font-semibold text-[#151515]">导入本地文档自动切分</span>
-                <span className="text-xs text-[#757575]">支持 .txt, .md, .json, .csv 等纯文本文档</span>
+                <span className="text-xs text-[#757575]">支持 .txt, .md, .markdown, .json, .csv 等文档</span>
               </div>
               <button
                 onClick={() => setFileModalOpen(false)}
@@ -498,19 +606,19 @@ export const KnowledgePage: React.FC = () => {
               >
                 <FileText className="w-6 h-6 text-[#757575]" />
                 <span className="text-xs font-medium text-[#151515]">
-                  {selectedFile ? selectedFile.name : '点击选取手机或电脑中的本地文档'}
+                  {selectedFile ? selectedFile.name : '点击选取本地 .md / .txt 文档'}
                 </span>
                 <span className="text-[10px] text-[#A5A5A5]">
                   {selectedFile
-                    ? `文件大小: ${(selectedFile.size / 1024).toFixed(1)} KB`
-                    : '支持 UTF-8 编码的 .txt, .md, .csv 文本文件'}
+                    ? `大小: ${(selectedFile.size / 1024).toFixed(1)} KB`
+                    : '支持 UTF-8 编码的 Markdown 与纯文本'}
                 </span>
               </div>
 
               {/* 文件名作为标题 */}
               {selectedFile && (
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-[#757575]">入库文档标题</label>
+                  <label className="text-xs font-medium text-[#757575]">入库标题</label>
                   <input
                     type="text"
                     value={fileTitle}
@@ -524,7 +632,7 @@ export const KnowledgePage: React.FC = () => {
               {fileContent && (
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center justify-between text-xs text-[#757575]">
-                    <span>提取内容预览</span>
+                    <span>内容已读取</span>
                     <span className="font-mono text-[10px]">{fileContent.length} 字符</span>
                   </div>
                   <div className="max-h-24 overflow-y-auto p-2 rounded-lg bg-[#F5F5F5] border border-[#EDEDED] text-[11px] font-mono text-[#757575] leading-relaxed whitespace-pre-wrap">
@@ -563,6 +671,88 @@ export const KnowledgePage: React.FC = () => {
                   )}
                 </button>
               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 弹窗 C：就地快捷重新登录 (凭证过期时无感补登) */}
+      {quickLoginOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-sm bg-white rounded-2xl border border-[#EDEDED] shadow-2xl p-5 flex flex-col gap-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-[#EDEDED] pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-1 rounded-md bg-[#F5F5F5]">
+                  <LogIn className="w-4 h-4 text-[#151515]" />
+                </div>
+                <span className="text-sm font-semibold text-[#151515]">登录 RuoYi 账号</span>
+              </div>
+              <button
+                onClick={() => setQuickLoginOpen(false)}
+                className="p-1 rounded-md text-[#757575] hover:bg-[#F5F5F5]"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleQuickLogin} className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-[#757575]">账号</label>
+                <input
+                  type="text"
+                  value={loginUser}
+                  onChange={(e) => setLoginUser(e.target.value)}
+                  className="w-full bg-[#FAFAFA] border border-[#EDEDED] rounded-lg px-3 py-2 text-xs text-[#151515] focus:outline-none focus:border-[#151515]"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-[#757575]">密码</label>
+                <input
+                  type="password"
+                  value={loginPass}
+                  onChange={(e) => setLoginPass(e.target.value)}
+                  className="w-full bg-[#FAFAFA] border border-[#EDEDED] rounded-lg px-3 py-2 text-xs text-[#151515] focus:outline-none focus:border-[#151515]"
+                />
+              </div>
+
+              {captchaData?.captchaEnabled && (
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-[#757575]">图形计算验证码</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="结果"
+                      value={loginCode}
+                      onChange={(e) => setLoginCode(e.target.value)}
+                      className="flex-1 bg-[#FAFAFA] border border-[#EDEDED] rounded-lg px-3 py-2 text-xs text-[#151515] focus:outline-none focus:border-[#151515]"
+                    />
+                    <div
+                      onClick={loadCaptcha}
+                      className="h-8 px-2 rounded-lg bg-[#F5F5F5] border border-[#EDEDED] flex items-center justify-center cursor-pointer hover:bg-[#EAEAEA]"
+                    >
+                      {captchaData.img ? (
+                        <img
+                          src={`data:image/png;base64,${captchaData.img}`}
+                          alt="code"
+                          className="h-6 max-w-[80px] object-contain"
+                        />
+                      ) : (
+                        <span className="text-[10px] text-[#757575]">刷新</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loggingIn}
+                className="w-full mt-2 h-9 rounded-lg bg-[#151515] hover:bg-black text-white text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {loggingIn ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                <span>立即登录并保存凭据</span>
+              </button>
             </form>
           </div>
         </div>
