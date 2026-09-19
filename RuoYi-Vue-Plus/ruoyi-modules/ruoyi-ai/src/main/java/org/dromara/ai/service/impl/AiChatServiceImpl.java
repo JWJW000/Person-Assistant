@@ -145,7 +145,13 @@ public class AiChatServiceImpl implements IAiChatService {
                         if (ragChunks != null && !ragChunks.isEmpty()) {
                             StringBuilder ctx = new StringBuilder("【参考知识库内容如下】:\n");
                             for (int i = 0; i < ragChunks.size(); i++) {
-                                ctx.append(i + 1).append(". ").append(ragChunks.get(i).getContent()).append("\n\n");
+                                AiKnowledgeChunk rc = ragChunks.get(i);
+                                ctx.append(i + 1).append(". ");
+                                if ("qa".equalsIgnoreCase(rc.getChunkType()) && rc.getQuestion() != null) {
+                                    ctx.append("[标准问答] 问题: ").append(rc.getQuestion()).append(" => 答案: ").append(rc.getContent()).append("\n\n");
+                                } else {
+                                    ctx.append(rc.getContent()).append("\n\n");
+                                }
                             }
                             ctx.append("【用户问题】:\n").append(userMessage).append("\n\n请结合上述参考知识库内容，准确回答用户问题。");
                             promptToSend = ctx.toString();

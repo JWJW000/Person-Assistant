@@ -68,6 +68,16 @@ public class AiKnowledgeChunk implements Serializable {
     private String status;
 
     /**
+     * 切片类型 text-普通文本/段落 qa-问答对词条
+     */
+    private String chunkType;
+
+    /**
+     * QA类型的标准问题 (仅当 chunkType='qa' 时有值，向量化只针对此字段)
+     */
+    private String question;
+
+    /**
      * 创建时间
      */
     private LocalDateTime createTime;

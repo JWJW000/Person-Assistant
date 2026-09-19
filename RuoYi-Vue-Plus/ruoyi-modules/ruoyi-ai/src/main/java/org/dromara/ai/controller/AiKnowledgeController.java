@@ -104,8 +104,10 @@ public class AiKnowledgeController extends BaseController {
         String content = params.get("content") != null ? params.get("content").toString() : "";
         Integer chunkSize = params.get("chunkSize") != null ? Integer.valueOf(params.get("chunkSize").toString()) : null;
         Integer chunkOverlap = params.get("chunkOverlap") != null ? Integer.valueOf(params.get("chunkOverlap").toString()) : null;
+        String chunkType = params.get("chunkType") != null ? params.get("chunkType").toString() : "text";
+        String question = params.get("question") != null ? params.get("question").toString() : null;
 
-        int count = knowledgeService.chunkAndSaveText(kbId, docId, title, content, chunkSize, chunkOverlap);
+        int count = knowledgeService.chunkAndSaveText(kbId, docId, title, content, chunkSize, chunkOverlap, chunkType, question);
         Map<String, Object> result = new HashMap<>();
         result.put("chunkCount", count);
         result.put("kbId", kbId);

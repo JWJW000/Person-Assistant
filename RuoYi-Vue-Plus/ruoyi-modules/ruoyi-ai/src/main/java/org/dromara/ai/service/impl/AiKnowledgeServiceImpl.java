@@ -118,6 +118,12 @@ public class AiKnowledgeServiceImpl implements IAiKnowledgeService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public int chunkAndSaveText(Long kbId, Long docId, String title, String content, Integer chunkSize, Integer chunkOverlap) {
+        return chunkAndSaveText(kbId, docId, title, content, chunkSize, chunkOverlap, "text", null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int chunkAndSaveText(Long kbId, Long docId, String title, String content, Integer chunkSize, Integer chunkOverlap, String chunkType, String question) {
         if (content == null || content.isBlank()) {
             return 0;
         }
@@ -138,10 +144,10 @@ public class AiKnowledgeServiceImpl implements IAiKnowledgeService {
         if (doc == null) {
             doc = new AiKnowledgeDocument();
             doc.setKbId(kbId);
-            doc.setFileName(title != null && !title.isBlank() ? title : "文本切片_" + System.currentTimeMillis());
+            doc.setFileName(title != null && !title.isBlank() ? title : ("qa".equalsIgnoreCase(chunkType) ? "问答词条" : "文本切片") + "_" + System.currentTimeMillis());
             doc.setFilePath("inline");
             doc.setFileSize((long) content.length());
-            doc.setFileType("txt");
+            doc.setFileType("qa".equalsIgnoreCase(chunkType) ? "qa" : "txt");
             doc.setParseStatus("1");
             doc.setChunkCount(0);
             doc.setCreateTime(LocalDateTime.now());
@@ -150,10 +156,7 @@ public class AiKnowledgeServiceImpl implements IAiKnowledgeService {
             docId = doc.getId();
         }
 
-        // 3. 执行滑动窗口文本语义切片
-        List<String> chunks = splitText(content, size, overlap);
-
-        // 4. 查询 Embedding 模型配置
+        // 3. 查询 Embedding 模型配置
         AiModelConfig embConfig = null;
         if (kb != null && kb.getEmbeddingModelId() != null) {
             embConfig = modelConfigMapper.selectById(kb.getEmbeddingModelId());
@@ -165,7 +168,35 @@ public class AiKnowledgeServiceImpl implements IAiKnowledgeService {
                 .last("LIMIT 1"));
         }
 
-        // 5. 循环生成 1536 维向量并写入 pgvector 数据库
+        // 4. 判断是否为 QA 问答词条类型：若为 qa，只对 question 进行向量化计算，content 作为解答
+        if ("qa".equalsIgnoreCase(chunkType) && question != null && !question.isBlank()) {
+            float[] embedding = VectorUtils.generateEmbedding(question.trim(), embConfig);
+            String vectorStr = VectorUtils.toVectorString(embedding);
+
+            AiKnowledgeChunk chunk = new AiKnowledgeChunk();
+            chunk.setKbId(kbId);
+            chunk.setDocId(docId);
+            chunk.setChunkOrder(1);
+            chunk.setContent(content.trim());
+            chunk.setTokenCount(content.trim().length());
+            chunk.setChunkType("qa");
+            chunk.setQuestion(question.trim());
+            chunk.setStatus("0");
+            chunk.setCreateTime(LocalDateTime.now());
+
+            chunkMapper.insertChunkWithVector(chunk, vectorStr);
+
+            doc.setChunkCount(1);
+            doc.setParseStatus("2");
+            doc.setUpdateTime(LocalDateTime.now());
+            documentMapper.updateById(doc);
+
+            log.info("知识库 [kbId={}] 成功写入 QA 问答词条，Q: [{}], 向量化入库完成", kbId, question);
+            return 1;
+        }
+
+        // 5. 普通长文本滑动窗口切片
+        List<String> chunks = splitText(content, size, overlap);
         int order = 1;
         for (String chunkText : chunks) {
             float[] embedding = VectorUtils.generateEmbedding(chunkText, embConfig);
@@ -177,15 +208,15 @@ public class AiKnowledgeServiceImpl implements IAiKnowledgeService {
             chunk.setChunkOrder(order++);
             chunk.setContent(chunkText);
             chunk.setTokenCount(chunkText.length());
+            chunk.setChunkType("text");
             chunk.setStatus("0");
             chunk.setCreateTime(LocalDateTime.now());
 
             chunkMapper.insertChunkWithVector(chunk, vectorStr);
         }
 
-        // 6. 更新文档完成状态与切片数
         doc.setChunkCount(chunks.size());
-        doc.setParseStatus("2"); // 处理完成
+        doc.setParseStatus("2");
         doc.setUpdateTime(LocalDateTime.now());
         documentMapper.updateById(doc);
 
@@ -231,33 +262,47 @@ public class AiKnowledgeServiceImpl implements IAiKnowledgeService {
                 .last("LIMIT 1"));
         }
 
-        // 2. 生成检索关键词向量
+        // 2. 第一路：pgvector HNSW 余弦相似度语义检索 (对 QA 词条的 Q 具有极高的召回率)
         float[] queryEmbedding = VectorUtils.generateEmbedding(query, embConfig);
         String queryVectorStr = VectorUtils.toVectorString(queryEmbedding);
+        List<AiKnowledgeChunk> results = chunkMapper.searchVectorChunks(kbId, queryVectorStr, k * 2);
 
-        // 3. 执行 pgvector HNSW 余弦相似度检索
-        List<AiKnowledgeChunk> results = chunkMapper.searchVectorChunks(kbId, queryVectorStr, k);
-
-        // 4. 若向量召回数量不足，结合关键词混合检索辅助召回
-        if (results.size() < k) {
-            int needed = k - results.size();
-            List<AiKnowledgeChunk> kwResults = chunkMapper.searchKeywordChunks(kbId, query.trim(), needed);
-            for (AiKnowledgeChunk kwChunk : kwResults) {
-                boolean exists = results.stream().anyMatch(r -> r.getId().equals(kwChunk.getId()));
-                if (!exists) {
-                    results.add(kwChunk);
+        // 3. 第二路：提取关键词进行混合精准与模糊搜索，并做得分加权融合 (Hybrid Fusion)
+        String cleanKw = query.replaceAll("[？?，,。!！吗呢的是我你可以多少帮查一下请问关于]", " ").trim();
+        String[] keywords = cleanKw.split("\\s+");
+        for (String kw : keywords) {
+            if (kw.length() >= 2) {
+                List<AiKnowledgeChunk> kwMatches = chunkMapper.searchKeywordChunks(kbId, kw, k);
+                for (AiKnowledgeChunk km : kwMatches) {
+                    AiKnowledgeChunk exist = results.stream().filter(r -> r.getId().equals(km.getId())).findFirst().orElse(null);
+                    if (exist != null) {
+                        // 命中关键词，将向量原分叠加加权 (+0.45)，使其轻松突破 0.8+
+                        double boostScore = Math.min(1.0, (exist.getScore() != null ? exist.getScore() : 0.3) + 0.45);
+                        exist.setScore(Math.round(boostScore * 10000.0) / 10000.0);
+                    } else {
+                        // 未在向量池中但命中关键词，直接作为高质量结果入库并赋分 0.85
+                        km.setScore(0.8500);
+                        results.add(km);
+                    }
                 }
             }
         }
 
-        // 5. 按相似度得分过滤
-        if (threshold > 0.0) {
-            results = results.stream()
-                .filter(chunk -> chunk.getScore() != null && chunk.getScore() >= threshold)
-                .collect(Collectors.toList());
+        // 4. 按综合得分降序排列
+        results.sort((a, b) -> Double.compare(b.getScore() != null ? b.getScore() : 0.0, a.getScore() != null ? a.getScore() : 0.0));
+
+        // 5. 按相似度门槛过滤并截取 topK
+        List<AiKnowledgeChunk> finalResults = new ArrayList<>();
+        for (AiKnowledgeChunk c : results) {
+            if (threshold <= 0.0 || (c.getScore() != null && c.getScore() >= threshold)) {
+                finalResults.add(c);
+                if (finalResults.size() >= k) {
+                    break;
+                }
+            }
         }
 
-        return results;
+        return finalResults;
     }
 
     /**

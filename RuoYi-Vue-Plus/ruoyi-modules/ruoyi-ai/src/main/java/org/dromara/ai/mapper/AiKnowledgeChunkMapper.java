@@ -21,7 +21,7 @@ public interface AiKnowledgeChunkMapper extends BaseMapperPlus<AiKnowledgeChunk,
      */
     @Insert("""
         <script>
-        INSERT INTO ai_knowledge_chunk (kb_id, doc_id, chunk_order, content, token_count, embedding, status, create_time)
+        INSERT INTO ai_knowledge_chunk (kb_id, doc_id, chunk_order, content, token_count, embedding, status, chunk_type, question, create_time)
         VALUES (
             #{chunk.kbId}, #{chunk.docId}, #{chunk.chunkOrder}, #{chunk.content}, #{chunk.tokenCount},
             <choose>
@@ -32,7 +32,17 @@ public interface AiKnowledgeChunkMapper extends BaseMapperPlus<AiKnowledgeChunk,
                     NULL
                 </otherwise>
             </choose>,
-            #{chunk.status}, #{chunk.createTime}
+            #{chunk.status},
+            <choose>
+                <when test="chunk.chunkType != null and chunk.chunkType != ''">
+                    #{chunk.chunkType}
+                </when>
+                <otherwise>
+                    'text'
+                </otherwise>
+            </choose>,
+            #{chunk.question},
+            #{chunk.createTime}
         )
         </script>
     """)
@@ -43,7 +53,7 @@ public interface AiKnowledgeChunkMapper extends BaseMapperPlus<AiKnowledgeChunk,
      * PostgreSQL pgvector HNSW 余弦相似度召回 (1 - (embedding <=> :vector))
      */
     @Select("""
-        SELECT id, kb_id, doc_id, chunk_order, content, token_count, status, create_time,
+        SELECT id, kb_id, doc_id, chunk_order, content, token_count, status, chunk_type, question, create_time,
                ROUND((1 - (embedding <=> #{queryVector}::vector))::numeric, 4) AS score
         FROM ai_knowledge_chunk
         WHERE kb_id = #{kbId} AND status = '0' AND embedding IS NOT NULL
@@ -57,13 +67,17 @@ public interface AiKnowledgeChunkMapper extends BaseMapperPlus<AiKnowledgeChunk,
     );
 
     /**
-     * 关键字/模糊匹配辅助检索
+     * 关键字精确/模糊匹配辅助检索 (优先匹配 question 或 content)
      */
     @Select("""
-        SELECT id, kb_id, doc_id, chunk_order, content, token_count, status, create_time,
-               0.8000 AS score
+        SELECT id, kb_id, doc_id, chunk_order, content, token_count, status, chunk_type, question, create_time,
+               CASE 
+                 WHEN question ILIKE CONCAT('%', #{keyword}, '%') THEN 0.8500
+                 ELSE 0.7500
+               END AS score
         FROM ai_knowledge_chunk
-        WHERE kb_id = #{kbId} AND status = '0' AND content ILIKE CONCAT('%', #{keyword}, '%')
+        WHERE kb_id = #{kbId} AND status = '0' 
+          AND (content ILIKE CONCAT('%', #{keyword}, '%') OR question ILIKE CONCAT('%', #{keyword}, '%'))
         ORDER BY id ASC
         LIMIT #{topK}
     """)

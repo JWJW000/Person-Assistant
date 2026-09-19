@@ -313,6 +313,8 @@ export interface KnowledgeChunkItem {
   chunkOrder: number;
   content: string;
   tokenCount: number;
+  chunkType?: string;
+  question?: string;
   createTime?: string;
 }
 
@@ -357,6 +359,8 @@ export async function chunkTextAndSave(
     content: string;
     chunkSize?: number;
     chunkOverlap?: number;
+    chunkType?: string;
+    question?: string;
   }
 ): Promise<{ chunkCount: number }> {
   if (!token) {

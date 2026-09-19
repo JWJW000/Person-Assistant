@@ -74,6 +74,11 @@ public interface IAiKnowledgeService {
     int chunkAndSaveText(Long kbId, Long docId, String title, String content, Integer chunkSize, Integer chunkOverlap);
 
     /**
+     * 增强版切片入库 (支持 QA 问答对词条，向量化只针对 Q 进行)
+     */
+    int chunkAndSaveText(Long kbId, Long docId, String title, String content, Integer chunkSize, Integer chunkOverlap, String chunkType, String question);
+
+    /**
      * 分页查询切片明细列表
      */
     PageResult<AiKnowledgeChunk> selectChunkList(Long kbId, Long docId, PageQuery pageQuery);

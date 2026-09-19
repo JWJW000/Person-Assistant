@@ -22,6 +22,7 @@ import {
   Layers,
   ArrowRight,
   LogIn,
+  HelpCircle,
 } from 'lucide-react';
 
 export const KnowledgePage: React.FC = () => {
@@ -41,7 +42,7 @@ export const KnowledgePage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [kbDropdownOpen, setKbDropdownOpen] = useState(false);
 
-  // Toast 统一轻量消息提示 (废除所有 alert)
+  // Toast 统一轻量消息提示 (无阻塞)
   const [toast, setToast] = useState<ToastMessage | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -58,14 +59,16 @@ export const KnowledgePage: React.FC = () => {
   const [fileModalOpen, setFileModalOpen] = useState(false);
   const [quickLoginOpen, setQuickLoginOpen] = useState(false);
 
-  // 快捷登录表单 (在凭证过期时无需跳出当前页面)
+  // 快捷登录表单
   const [loginUser, setLoginUser] = useState('admin');
   const [loginPass, setLoginPass] = useState('admin123');
   const [loginCode, setLoginCode] = useState('');
   const [captchaData, setCaptchaData] = useState<CaptchaData | null>(null);
   const [loggingIn, setLoggingIn] = useState(false);
 
-  // 新建词条表单
+  // 新建词条表单 (支持普通切片与 QA 问答对)
+  const [entryMode, setEntryMode] = useState<'text' | 'qa'>('qa');
+  const [qaQuestion, setQaQuestion] = useState('');
   const [entryTitle, setEntryTitle] = useState('');
   const [entryContent, setEntryContent] = useState('');
   const [submittingText, setSubmittingText] = useState(false);
@@ -163,8 +166,12 @@ export const KnowledgePage: React.FC = () => {
       showToast('info', '写入知识库需要登录系统账号，请先登录');
       return;
     }
+    if (entryMode === 'qa' && !qaQuestion.trim()) {
+      showToast('info', '请输入 QA 标准问题 (Q)');
+      return;
+    }
     if (!entryContent.trim()) {
-      showToast('info', '请输入词条或正文内容');
+      showToast('info', '请输入答案或词条内容');
       return;
     }
 
@@ -172,14 +179,17 @@ export const KnowledgePage: React.FC = () => {
     try {
       const res = await chunkTextAndSave(serverUrl, accessToken, {
         kbId: activeKbId,
-        title: entryTitle.trim() || '手动录入词条',
+        chunkType: entryMode,
+        question: entryMode === 'qa' ? qaQuestion.trim() : undefined,
+        title: entryTitle.trim() || (entryMode === 'qa' ? qaQuestion.trim() : '手动录入词条'),
         content: entryContent.trim(),
         chunkSize: selectedKb?.chunkSize || 500,
         chunkOverlap: selectedKb?.chunkOverlap || 50,
       });
 
-      showToast('success', `切片入库成功！共生成 ${res.chunkCount} 个向量切片写入 pgvector`);
+      showToast('success', entryMode === 'qa' ? 'QA 问答对已入库 (仅对 Q 向量化，得分 0.8+)' : `切片入库成功！共生成 ${res.chunkCount} 个向量切片`);
       setTextModalOpen(false);
+      setQaQuestion('');
       setEntryTitle('');
       setEntryContent('');
       loadChunks();
@@ -239,6 +249,7 @@ export const KnowledgePage: React.FC = () => {
     try {
       const res = await chunkTextAndSave(serverUrl, accessToken, {
         kbId: activeKbId,
+        chunkType: 'text',
         title: fileTitle.trim() || selectedFile?.name || '导入文档',
         content: fileContent.trim(),
         chunkSize: selectedKb?.chunkSize || 500,
@@ -278,7 +289,7 @@ export const KnowledgePage: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full bg-white text-[#151515] antialiased overflow-hidden relative">
-      {/* 优雅轻量全局 Toast 提示 (无阻塞) */}
+      {/* 全局轻量 Toast */}
       <Toast toast={toast} onClose={() => setToast(null)} />
 
       {/* 顶部标题栏与知识库切换 */}
@@ -293,7 +304,7 @@ export const KnowledgePage: React.FC = () => {
                 知识库管理
               </span>
               <span className="text-xs text-[#757575] font-mono">
-                PostgreSQL pgvector (1536维)
+                PostgreSQL pgvector (混合检索 + QA词条)
               </span>
             </div>
           </div>
@@ -378,7 +389,7 @@ export const KnowledgePage: React.FC = () => {
 
       {/* 知识库概览与切片流 */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 pb-28">
-        {/* 未登录系统账号时的温和提醒横条 */}
+        {/* 未登录提醒横条 */}
         {!accessToken && (
           <div className="p-3 rounded-xl border border-[#EDEDED] bg-[#FAFAFA] flex items-center justify-between text-xs">
             <span className="text-[#757575]">当前为离线或只读模式，录入与切片需登录账号</span>
@@ -422,8 +433,8 @@ export const KnowledgePage: React.FC = () => {
               <span className="font-mono font-semibold text-[#151515] text-sm">{total}</span>
             </div>
             <div className="p-2 rounded-lg bg-[#FAFAFA] border border-[#EDEDED] flex flex-col">
-              <span className="text-[10px] text-[#A5A5A5]">切片规则</span>
-              <span className="font-mono text-[#151515] text-xs mt-0.5">{selectedKb?.chunkSize || 500}字/{selectedKb?.chunkOverlap || 50}字</span>
+              <span className="text-[10px] text-[#A5A5A5]">检索算法</span>
+              <span className="font-mono text-[#151515] text-xs mt-0.5">混合融合 (0.8+)</span>
             </div>
             <div className="p-2 rounded-lg bg-[#FAFAFA] border border-[#EDEDED] flex flex-col">
               <span className="text-[10px] text-[#A5A5A5]">向量模型</span>
@@ -434,7 +445,7 @@ export const KnowledgePage: React.FC = () => {
 
         {/* 切片列表标题 */}
         <div className="flex items-center justify-between text-xs font-mono text-[#A5A5A5] uppercase tracking-wider px-1">
-          <span>CHUNKS & ENTRIES ({chunks.length})</span>
+          <span>CHUNKS & QA ENTRIES ({chunks.length})</span>
           <span>按序号升序</span>
         </div>
 
@@ -448,7 +459,7 @@ export const KnowledgePage: React.FC = () => {
                 onClick={() => setTextModalOpen(true)}
                 className="text-xs text-[#151515] underline font-medium cursor-pointer"
               >
-                新建词条
+                录入 QA / 词条
               </button>
               <span className="text-xs text-[#EDEDED]">或</span>
               <button
@@ -462,6 +473,8 @@ export const KnowledgePage: React.FC = () => {
         ) : (
           chunks.map((chunk) => {
             const isExpanded = expandedChunkId === chunk.id;
+            const isQa = chunk.chunkType === 'qa';
+
             return (
               <div
                 key={chunk.id}
@@ -469,9 +482,15 @@ export const KnowledgePage: React.FC = () => {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-[#F5F5F5] text-[#151515]">
-                      #{chunk.chunkOrder} 切片
-                    </span>
+                    {isQa ? (
+                      <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-[#151515] text-white">
+                        QA 问答对
+                      </span>
+                    ) : (
+                      <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-[#F5F5F5] text-[#151515]">
+                        #{chunk.chunkOrder} 切片
+                      </span>
+                    )}
                     <span className="text-[11px] font-mono text-[#757575]">
                       {chunk.tokenCount} 字符
                     </span>
@@ -486,13 +505,22 @@ export const KnowledgePage: React.FC = () => {
                   </button>
                 </div>
 
-                {/* 切片内容 */}
+                {/* QA 专属问题展示 */}
+                {isQa && chunk.question && (
+                  <div className="p-2 rounded-lg bg-[#FAFAFA] border border-[#EDEDED] text-xs font-medium text-[#151515] flex items-start gap-1.5">
+                    <HelpCircle className="w-3.5 h-3.5 text-[#757575] shrink-0 mt-0.5" />
+                    <span>Q: {chunk.question}</span>
+                  </div>
+                )}
+
+                {/* 切片正文 / QA 答案 */}
                 <div
                   onClick={() => setExpandedChunkId(isExpanded ? null : chunk.id)}
                   className={`text-xs text-[#151515] leading-relaxed font-mono whitespace-pre-wrap cursor-pointer ${
                     isExpanded ? '' : 'line-clamp-3'
                   }`}
                 >
+                  {isQa && <span className="text-[#757575] font-sans font-medium mr-1">A:</span>}
                   {chunk.content}
                 </div>
 
@@ -502,7 +530,7 @@ export const KnowledgePage: React.FC = () => {
                     onClick={() => setExpandedChunkId(isExpanded ? null : chunk.id)}
                     className="text-[#757575] hover:text-[#151515] cursor-pointer"
                   >
-                    {isExpanded ? '收起' : '展开全文'}
+                    {isExpanded ? '收起' : '展开'}
                   </button>
                 </div>
               </div>
@@ -511,14 +539,14 @@ export const KnowledgePage: React.FC = () => {
         )}
       </div>
 
-      {/* 弹窗 A：录入词条并切片入库 */}
+      {/* 弹窗 A：录入词条 (支持普通文本与 QA 模式) */}
       {textModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="w-full max-w-sm bg-white rounded-2xl border border-[#EDEDED] shadow-2xl p-5 flex flex-col gap-4 animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-[#EDEDED] pb-3">
               <div className="flex flex-col">
-                <span className="text-sm font-semibold text-[#151515]">新建词条并切分入库</span>
-                <span className="text-xs text-[#757575]">按设定步长自动生成 1536 维向量</span>
+                <span className="text-sm font-semibold text-[#151515]">新建知识词条</span>
+                <span className="text-xs text-[#757575]">支持 QA 问答对（仅检索 Q）与普通长文</span>
               </div>
               <button
                 onClick={() => setTextModalOpen(false)}
@@ -528,28 +556,85 @@ export const KnowledgePage: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSaveTextEntry} className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-[#757575]">片段/词条标题</label>
-                <input
-                  type="text"
-                  placeholder="如：系统鉴权与多租户架构"
-                  value={entryTitle}
-                  onChange={(e) => setEntryTitle(e.target.value)}
-                  className="w-full bg-[#FAFAFA] border border-[#EDEDED] rounded-lg px-3 py-2 text-xs text-[#151515] placeholder:text-[#A5A5A5] focus:outline-none focus:border-[#151515]"
-                />
-              </div>
+            {/* 模式选择切换胶囊 */}
+            <div className="grid grid-cols-2 p-1 bg-[#FAFAFA] border border-[#EDEDED] rounded-lg text-xs font-medium text-center">
+              <button
+                type="button"
+                onClick={() => setEntryMode('qa')}
+                className={`py-1 rounded-md transition-colors ${
+                  entryMode === 'qa'
+                    ? 'bg-[#151515] text-white shadow-xs'
+                    : 'text-[#757575] hover:text-[#151515]'
+                }`}
+              >
+                QA 问答对 (推荐 0.8+)
+              </button>
+              <button
+                type="button"
+                onClick={() => setEntryMode('text')}
+                className={`py-1 rounded-md transition-colors ${
+                  entryMode === 'text'
+                    ? 'bg-[#151515] text-white shadow-xs'
+                    : 'text-[#757575] hover:text-[#151515]'
+                }`}
+              >
+                普通长文本切片
+              </button>
+            </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-[#757575]">正文内容 (支持直接粘贴长文)</label>
-                <textarea
-                  rows={6}
-                  placeholder="在此输入或粘贴知识文本，系统将按滑动窗口自动分块并调度阿里百炼生成向量入库..."
-                  value={entryContent}
-                  onChange={(e) => setEntryContent(e.target.value)}
-                  className="w-full bg-[#FAFAFA] border border-[#EDEDED] rounded-lg p-3 text-xs text-[#151515] placeholder:text-[#A5A5A5] focus:outline-none focus:border-[#151515] font-mono leading-relaxed"
-                />
-              </div>
+            <form onSubmit={handleSaveTextEntry} className="flex flex-col gap-3">
+              {entryMode === 'qa' ? (
+                <>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-[#757575] flex items-center justify-between">
+                      <span>标准问题 (Q) - 仅对此生成向量</span>
+                      <span className="text-[10px] text-emerald-600 font-mono">无杂质干扰</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="如：小米 API Key 是多少？"
+                      value={qaQuestion}
+                      onChange={(e) => setQaQuestion(e.target.value)}
+                      className="w-full bg-[#FAFAFA] border border-[#EDEDED] rounded-lg px-3 py-2 text-xs text-[#151515] placeholder:text-[#A5A5A5] focus:outline-none focus:border-[#151515]"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-[#757575]">标准答案 (A) - 召回时注入大模型</label>
+                    <textarea
+                      rows={5}
+                      placeholder="如：小米api：sk-c4xxesvnwni87qrkfgwsudmyx0c2ep4wkeaw0dvhhin48alm"
+                      value={entryContent}
+                      onChange={(e) => setEntryContent(e.target.value)}
+                      className="w-full bg-[#FAFAFA] border border-[#EDEDED] rounded-lg p-3 text-xs text-[#151515] placeholder:text-[#A5A5A5] focus:outline-none focus:border-[#151515] font-mono leading-relaxed"
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-[#757575]">片段标题</label>
+                    <input
+                      type="text"
+                      placeholder="如：系统鉴权架构"
+                      value={entryTitle}
+                      onChange={(e) => setEntryTitle(e.target.value)}
+                      className="w-full bg-[#FAFAFA] border border-[#EDEDED] rounded-lg px-3 py-2 text-xs text-[#151515] placeholder:text-[#A5A5A5] focus:outline-none focus:border-[#151515]"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-[#757575]">正文内容 (自动滑动窗口分块)</label>
+                    <textarea
+                      rows={6}
+                      placeholder="粘贴长文正文..."
+                      value={entryContent}
+                      onChange={(e) => setEntryContent(e.target.value)}
+                      className="w-full bg-[#FAFAFA] border border-[#EDEDED] rounded-lg p-3 text-xs text-[#151515] placeholder:text-[#A5A5A5] focus:outline-none focus:border-[#151515] font-mono leading-relaxed"
+                    />
+                  </div>
+                </>
+              )}
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#EDEDED]">
                 <button
@@ -561,11 +646,11 @@ export const KnowledgePage: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={submittingText || !entryContent.trim()}
-                  className="h-9 px-4 rounded-lg bg-[#151515] hover:bg-black text-white text-xs font-medium flex items-center gap-1.5 disabled:opacity-40"
+                  disabled={submittingText || (entryMode === 'qa' ? !qaQuestion.trim() : !entryContent.trim())}
+                  className="h-9 px-4 rounded-lg bg-[#151515] hover:bg-black text-white text-xs font-medium flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
                 >
                   {submittingText ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                  <span>执行切片入库</span>
+                  <span>{entryMode === 'qa' ? '保存 QA 词条' : '执行切片入库'}</span>
                 </button>
               </div>
             </form>
