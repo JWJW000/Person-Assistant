@@ -85,6 +85,11 @@ public class AiChatServiceImpl implements IAiChatService {
 
     @Override
     public SseEmitter streamChat(String sessionId, String userMessage, Long kbId) {
+        return streamChat(sessionId, userMessage, kbId, null);
+    }
+
+    @Override
+    public SseEmitter streamChat(String sessionId, String userMessage, Long kbId, Long modelId) {
         Long userId = LoginHelper.getUserId();
         SseEmitter emitter = new SseEmitter(180_000L); // 3分钟超时
 
@@ -114,10 +119,22 @@ public class AiChatServiceImpl implements IAiChatService {
             StringBuilder assistantReply = new StringBuilder();
             long startTime = System.currentTimeMillis();
             try {
-                // 获取默认模型配置 (优先取 deepseek 或 openai)
-                AiModelConfig config = modelConfigMapper.selectOne(new LambdaQueryWrapper<AiModelConfig>()
-                    .eq(AiModelConfig::getIsDefault, "1")
-                    .last("LIMIT 1"));
+                // 获取模型配置：若指定了 modelId 则优先使用，否则取默认模型
+                AiModelConfig config = null;
+                if (modelId != null && modelId > 0) {
+                    config = modelConfigMapper.selectById(modelId);
+                }
+                if (config == null) {
+                    config = modelConfigMapper.selectOne(new LambdaQueryWrapper<AiModelConfig>()
+                        .eq(AiModelConfig::getModelType, "chat")
+                        .eq(AiModelConfig::getIsDefault, "1")
+                        .last("LIMIT 1"));
+                }
+                if (config == null) {
+                    config = modelConfigMapper.selectOne(new LambdaQueryWrapper<AiModelConfig>()
+                        .eq(AiModelConfig::getModelType, "chat")
+                        .last("LIMIT 1"));
+                }
 
                 // 检查知识库 RAG 增强
                 String promptToSend = userMessage;

@@ -1,5 +1,5 @@
 import { CLIENT_ID } from './auth';
-import { KnowledgeBaseItem } from '../store';
+import { KnowledgeBaseItem, AiModelItem } from '../store';
 
 export interface AiSessionItem {
   id: string;
@@ -45,6 +45,34 @@ export async function fetchKnowledgeBases(serverUrl: string, token: string): Pro
     return json.data;
   }
   return [];
+}
+
+/**
+ * 获取中转站全部可用对话大模型列表
+ */
+export async function fetchChatModels(serverUrl: string, token: string): Promise<AiModelItem[]> {
+  const url = `${getBaseUrl(serverUrl)}/ai/model/all?modelType=chat`;
+  const res = await fetch(url, {
+    headers: getHeaders(token),
+  });
+  const json = await res.json();
+  if (json.code === 200 && Array.isArray(json.data)) {
+    return json.data;
+  }
+  return [];
+}
+
+/**
+ * 设置服务端当前默认模型
+ */
+export async function setDefaultModel(serverUrl: string, token: string, modelId: number): Promise<boolean> {
+  const url = `${getBaseUrl(serverUrl)}/ai/model/default/${modelId}`;
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: getHeaders(token),
+  });
+  const json = await res.json();
+  return json.code === 200;
 }
 
 /**
@@ -113,6 +141,7 @@ export interface StreamChatOptions {
   sessionId: string;
   message: string;
   kbId?: number | null;
+  modelId?: number | null;
   onChunk: (chunk: string) => void;
   onDone: () => void;
   onError: (err: any) => void;
@@ -120,10 +149,10 @@ export interface StreamChatOptions {
 }
 
 /**
- * 打字机流式对话 (支持 RAG 知识库检索)
+ * 打字机流式对话 (支持中转站指定大模型与 RAG 知识库检索)
  */
 export async function streamAiChat(options: StreamChatOptions): Promise<void> {
-  const { serverUrl, token, sessionId, message, kbId, onChunk, onDone, onError, signal } = options;
+  const { serverUrl, token, sessionId, message, kbId, modelId, onChunk, onDone, onError, signal } = options;
 
   const url = `${getBaseUrl(serverUrl)}/ai/chat/stream`;
 
@@ -135,17 +164,18 @@ export async function streamAiChat(options: StreamChatOptions): Promise<void> {
         sessionId,
         message,
         kbId: kbId || undefined,
+        modelId: modelId || undefined,
       }),
       signal,
     });
 
     if (!res.ok) {
       const errText = await res.text();
-      throw new Error(`服务器响应异常 (${res.status}): ${errText}`);
+      throw new Error(`服务响应异常 (${res.status}): ${errText}`);
     }
 
     if (!res.body) {
-      throw new Error('当前环境不支持流式响应体');
+      throw new Error('当前环境不支持流式响应');
     }
 
     const reader = res.body.getReader();

@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useAppStore, KnowledgeBaseItem } from '../store';
+import { useAppStore, KnowledgeBaseItem, AiModelItem } from '../store';
 import { ConversationDrawer } from '../components/ConversationDrawer';
 import {
   fetchKnowledgeBases,
+  fetchChatModels,
+  setDefaultModel,
   fetchAiSessions,
   createAiSession,
   fetchAiMessages,
@@ -18,6 +20,7 @@ import {
   RefreshCw,
   Database,
   ArrowUpRight,
+  Cpu,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -32,12 +35,12 @@ interface DisplayMessage {
 
 const PROMPT_SUGGESTIONS = [
   {
-    title: 'pgvector 向量检索原理',
-    desc: '若依系统如何使用 pgvector 与 HNSW 进行高维余弦召回？',
+    title: '模型综合评测',
+    desc: '请详细分析 DeepSeek V4 Pro 与 Claude Sonnet 4.6 的架构特点与适用场景',
   },
   {
-    title: '阿里百炼向量模型',
-    desc: '当前挂载的百炼 text-embedding-v2 具备哪些特性？',
+    title: 'pgvector 向量检索原理',
+    desc: '若依系统如何使用 pgvector 与 HNSW 进行高维余弦召回？',
   },
   {
     title: '智能出行查票',
@@ -57,6 +60,10 @@ export const ChatPage: React.FC = () => {
     setActiveKbId,
     knowledgeBases,
     setKnowledgeBases,
+    activeModelId,
+    setActiveModelId,
+    chatModels,
+    setChatModels,
   } = useAppStore();
 
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
@@ -64,6 +71,7 @@ export const ChatPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [kbDropdownOpen, setKbDropdownOpen] = useState(false);
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -72,7 +80,22 @@ export const ChatPage: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
   }, []);
 
-  // 1. 获取知识库列表
+  // 1. 获取模型列表
+  const loadModels = useCallback(async () => {
+    if (!serverUrl || !accessToken) return;
+    try {
+      const models = await fetchChatModels(serverUrl, accessToken);
+      setChatModels(models);
+      if (activeModelId === null && models.length > 0) {
+        const def = models.find((m) => m.isDefault === '1') || models[0];
+        setActiveModelId(def.id);
+      }
+    } catch (err) {
+      console.warn('加载模型列表失败:', err);
+    }
+  }, [serverUrl, accessToken, activeModelId, setActiveModelId, setChatModels]);
+
+  // 2. 获取知识库列表
   const loadKnowledgeBases = useCallback(async () => {
     if (!serverUrl || !accessToken) return;
     try {
@@ -86,7 +109,7 @@ export const ChatPage: React.FC = () => {
     }
   }, [serverUrl, accessToken, activeKbId, setActiveKbId, setKnowledgeBases]);
 
-  // 2. 获取会话列表
+  // 3. 获取会话列表
   const loadSessions = useCallback(async () => {
     if (!serverUrl || !accessToken) return;
     try {
@@ -107,7 +130,7 @@ export const ChatPage: React.FC = () => {
     }
   }, [serverUrl, accessToken, activeConversationId, setActiveConversationId, setConversations]);
 
-  // 3. 拉取历史记录
+  // 4. 拉取历史记录
   const loadMessages = useCallback(
     async (sessionId: string) => {
       if (!serverUrl || !accessToken || !sessionId || sessionId === 'default') return;
@@ -129,9 +152,10 @@ export const ChatPage: React.FC = () => {
   );
 
   useEffect(() => {
+    loadModels();
     loadKnowledgeBases();
     loadSessions();
-  }, [loadKnowledgeBases, loadSessions]);
+  }, [loadModels, loadKnowledgeBases, loadSessions]);
 
   useEffect(() => {
     if (activeConversationId && activeConversationId !== 'default') {
@@ -142,6 +166,15 @@ export const ChatPage: React.FC = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages, scrollToBottom]);
+
+  // 切换大模型
+  const handleSelectModel = async (model: AiModelItem) => {
+    setActiveModelId(model.id);
+    setModelDropdownOpen(false);
+    if (serverUrl && accessToken) {
+      setDefaultModel(serverUrl, accessToken, model.id).catch(() => {});
+    }
+  };
 
   // 新建会话
   const handleCreateSession = async () => {
@@ -221,6 +254,7 @@ export const ChatPage: React.FC = () => {
       sessionId: targetSessionId,
       message: text,
       kbId: activeKbId,
+      modelId: activeModelId,
       signal: controller.signal,
       onChunk: (chunk) => {
         accumulated += chunk;
@@ -255,11 +289,12 @@ export const ChatPage: React.FC = () => {
   };
 
   const selectedKb = knowledgeBases.find((kb) => kb.id === activeKbId);
+  const selectedModel = chatModels.find((m) => m.id === activeModelId);
 
   return (
     <div className="flex flex-col h-full bg-white text-[#151515] antialiased">
-      {/* 顶部简明导航栏 (Quiet Header) */}
-      <header className="safe-top bg-white border-b border-[#EDEDED] px-4 py-2.5 flex flex-col gap-2 z-20 sticky top-0">
+      {/* 顶部简明导航栏 */}
+      <header className="safe-top bg-white border-b border-[#EDEDED] px-4 py-2 flex flex-col gap-2 z-20 sticky top-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button
@@ -271,9 +306,9 @@ export const ChatPage: React.FC = () => {
             </button>
             <div className="flex flex-col">
               <span className="text-sm font-semibold tracking-tight text-[#151515]">
-                AI 知识中台
+                AI 智能助理
               </span>
-              <span className="text-xs text-[#757575] font-mono truncate max-w-[160px]">
+              <span className="text-xs text-[#757575] font-mono truncate max-w-[150px]">
                 {conversations.find((c) => c.id === activeConversationId)?.title || '默认会话'}
               </span>
             </div>
@@ -288,86 +323,133 @@ export const ChatPage: React.FC = () => {
           </button>
         </div>
 
-        {/* 知识库选择器 (Clean Selector) */}
-        <div className="relative">
-          <div
-            onClick={() => setKbDropdownOpen((prev) => !prev)}
-            className="flex items-center justify-between px-3 py-1.5 bg-[#FAFAFA] hover:bg-[#F5F5F5] rounded-lg border border-[#EDEDED] cursor-pointer transition-colors"
-          >
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <Database className="w-3.5 h-3.5 text-[#757575] shrink-0" />
-              <span className="text-xs text-[#757575] shrink-0 font-medium">知识底座:</span>
-              <span className="text-xs font-medium text-[#151515] truncate">
-                {selectedKb ? selectedKb.name : '全能通用对话 (无挂载)'}
-              </span>
+        {/* 双控制胶囊：大模型切换 + 知识底座挂载 */}
+        <div className="grid grid-cols-2 gap-2 relative">
+          {/* 1. 模型切换胶囊 */}
+          <div className="relative">
+            <div
+              onClick={() => {
+                setModelDropdownOpen((prev) => !prev);
+                setKbDropdownOpen(false);
+              }}
+              className="flex items-center justify-between px-2.5 py-1.5 bg-[#FAFAFA] hover:bg-[#F5F5F5] rounded-lg border border-[#EDEDED] cursor-pointer transition-colors"
+            >
+              <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                <Cpu className="w-3.5 h-3.5 text-[#757575] shrink-0" />
+                <span className="text-xs font-medium text-[#151515] truncate">
+                  {selectedModel ? selectedModel.name : '选择大模型'}
+                </span>
+              </div>
+              <ChevronDown className={`w-3.5 h-3.5 text-[#757575] shrink-0 transition-transform ${modelDropdownOpen ? 'rotate-180' : ''}`} />
             </div>
 
-            <div className="flex items-center gap-1 shrink-0 ml-2">
-              {selectedKb && (
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-[#EDEDED] text-[#151515]">
-                  1536维
-                </span>
-              )}
-              <ChevronDown className={`w-3.5 h-3.5 text-[#757575] transition-transform ${kbDropdownOpen ? 'rotate-180' : ''}`} />
-            </div>
+            {/* 模型选择面板 (中转站模型列表) */}
+            {modelDropdownOpen && (
+              <div className="absolute top-full left-0 right-[-100%] sm:right-0 mt-1 p-1 bg-white rounded-xl border border-[#EDEDED] shadow-xl z-30 max-h-72 overflow-y-auto flex flex-col gap-0.5">
+                <div className="px-2.5 py-1 text-[11px] text-[#A5A5A5] font-mono border-b border-[#EDEDED] flex items-center justify-between">
+                  <span>中转站所有可用模型 ({chatModels.length})</span>
+                  <span className="text-[9px]">newapi.5wjw.cn</span>
+                </div>
+
+                {chatModels.map((m) => {
+                  const isSelected = activeModelId === m.id;
+                  return (
+                    <div
+                      key={m.id}
+                      onClick={() => handleSelectModel(m)}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs cursor-pointer flex items-center justify-between ${
+                        isSelected
+                          ? 'bg-[#151515] text-white font-medium'
+                          : 'hover:bg-[#F5F5F5] text-[#151515]'
+                      }`}
+                    >
+                      <div className="flex flex-col min-w-0 pr-2">
+                        <span className="truncate font-medium">{m.name}</span>
+                        <span className={`text-[10px] font-mono truncate ${isSelected ? 'text-[#A5A5A5]' : 'text-[#757575]'}`}>
+                          {m.modelName} ({m.provider})
+                        </span>
+                      </div>
+                      {isSelected && <Check className="w-4 h-4 text-white shrink-0" />}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          {/* 下拉面板 */}
-          {kbDropdownOpen && (
-            <div className="absolute top-full left-0 right-0 mt-1 p-1 bg-white rounded-xl border border-[#EDEDED] shadow-lg z-30 flex flex-col gap-0.5">
-              <div className="px-2.5 py-1 text-[11px] text-[#A5A5A5] font-mono border-b border-[#EDEDED]">
-                选择要挂载的知识库
+          {/* 2. 知识库切换胶囊 */}
+          <div className="relative">
+            <div
+              onClick={() => {
+                setKbDropdownOpen((prev) => !prev);
+                setModelDropdownOpen(false);
+              }}
+              className="flex items-center justify-between px-2.5 py-1.5 bg-[#FAFAFA] hover:bg-[#F5F5F5] rounded-lg border border-[#EDEDED] cursor-pointer transition-colors"
+            >
+              <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                <Database className="w-3.5 h-3.5 text-[#757575] shrink-0" />
+                <span className="text-xs font-medium text-[#151515] truncate">
+                  {selectedKb ? selectedKb.name : '无知识库'}
+                </span>
               </div>
-
-              {/* 无知识库 */}
-              <div
-                onClick={() => {
-                  setActiveKbId(null);
-                  setKbDropdownOpen(false);
-                }}
-                className={`px-2.5 py-2 rounded-lg text-xs cursor-pointer flex items-center justify-between ${
-                  activeKbId === null
-                    ? 'bg-[#151515] text-white font-medium'
-                    : 'hover:bg-[#F5F5F5] text-[#151515]'
-                }`}
-              >
-                <div className="flex flex-col">
-                  <span>全能通用对话</span>
-                  <span className={`text-[10px] ${activeKbId === null ? 'text-[#A5A5A5]' : 'text-[#757575]'}`}>
-                    不限制知识范围，由模型直接回答
-                  </span>
-                </div>
-                {activeKbId === null && <Check className="w-4 h-4 text-white" />}
-              </div>
-
-              {/* 知识库项 */}
-              {knowledgeBases.map((kb: KnowledgeBaseItem) => {
-                const isSelected = activeKbId === kb.id;
-                return (
-                  <div
-                    key={kb.id}
-                    onClick={() => {
-                      setActiveKbId(kb.id);
-                      setKbDropdownOpen(false);
-                    }}
-                    className={`px-2.5 py-2 rounded-lg text-xs cursor-pointer flex items-center justify-between ${
-                      isSelected
-                        ? 'bg-[#151515] text-white font-medium'
-                        : 'hover:bg-[#F5F5F5] text-[#151515]'
-                    }`}
-                  >
-                    <div className="flex flex-col min-w-0 pr-2">
-                      <span className="truncate font-medium">{kb.name}</span>
-                      <span className={`text-[10px] truncate ${isSelected ? 'text-[#A5A5A5]' : 'text-[#757575]'}`}>
-                        {kb.description || `切片大小 ${kb.chunkSize || 500} 字`}
-                      </span>
-                    </div>
-                    {isSelected && <Check className="w-4 h-4 text-white shrink-0" />}
-                  </div>
-                );
-              })}
+              <ChevronDown className={`w-3.5 h-3.5 text-[#757575] shrink-0 transition-transform ${kbDropdownOpen ? 'rotate-180' : ''}`} />
             </div>
-          )}
+
+            {/* 知识库选择面板 */}
+            {kbDropdownOpen && (
+              <div className="absolute top-full left-[-100%] sm:left-0 right-0 mt-1 p-1 bg-white rounded-xl border border-[#EDEDED] shadow-xl z-30 flex flex-col gap-0.5">
+                <div className="px-2.5 py-1 text-[11px] text-[#A5A5A5] font-mono border-b border-[#EDEDED]">
+                  选择知识底座 (PostgreSQL pgvector)
+                </div>
+
+                <div
+                  onClick={() => {
+                    setActiveKbId(null);
+                    setKbDropdownOpen(false);
+                  }}
+                  className={`px-2.5 py-2 rounded-lg text-xs cursor-pointer flex items-center justify-between ${
+                    activeKbId === null
+                      ? 'bg-[#151515] text-white font-medium'
+                      : 'hover:bg-[#F5F5F5] text-[#151515]'
+                  }`}
+                >
+                  <div className="flex flex-col">
+                    <span>全能通用模式</span>
+                    <span className={`text-[10px] ${activeKbId === null ? 'text-[#A5A5A5]' : 'text-[#757575]'}`}>
+                      不挂载知识库，纯模型通用回答
+                    </span>
+                  </div>
+                  {activeKbId === null && <Check className="w-4 h-4 text-white" />}
+                </div>
+
+                {knowledgeBases.map((kb: KnowledgeBaseItem) => {
+                  const isSelected = activeKbId === kb.id;
+                  return (
+                    <div
+                      key={kb.id}
+                      onClick={() => {
+                        setActiveKbId(kb.id);
+                        setKbDropdownOpen(false);
+                      }}
+                      className={`px-2.5 py-2 rounded-lg text-xs cursor-pointer flex items-center justify-between ${
+                        isSelected
+                          ? 'bg-[#151515] text-white font-medium'
+                          : 'hover:bg-[#F5F5F5] text-[#151515]'
+                      }`}
+                    >
+                      <div className="flex flex-col min-w-0 pr-2">
+                        <span className="truncate font-medium">{kb.name}</span>
+                        <span className={`text-[10px] truncate ${isSelected ? 'text-[#A5A5A5]' : 'text-[#757575]'}`}>
+                          {kb.description || `切片大小 ${kb.chunkSize || 500} 字`}
+                        </span>
+                      </div>
+                      {isSelected && <Check className="w-4 h-4 text-white shrink-0" />}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -375,15 +457,18 @@ export const ChatPage: React.FC = () => {
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {messages.length === 0 ? (
           /* 空状态引导 */
-          <div className="flex flex-col justify-center min-h-[55vh] gap-5 max-w-md mx-auto text-left py-8">
+          <div className="flex flex-col justify-center min-h-[55vh] gap-5 max-w-md mx-auto text-left py-6">
             <div className="flex flex-col gap-1">
-              <h2 className="text-base font-semibold text-[#151515] tracking-tight">
-                {selectedKb ? `已关联知识库：${selectedKb.name}` : 'AI 智能问答'}
+              <h2 className="text-base font-semibold text-[#151515] tracking-tight flex items-center gap-1.5">
+                <span>当前模型:</span>
+                <span className="font-mono text-sm bg-[#F5F5F5] px-2 py-0.5 rounded border border-[#EDEDED]">
+                  {selectedModel ? selectedModel.name : 'DeepSeek V4 Pro'}
+                </span>
               </h2>
               <p className="text-xs text-[#757575] leading-normal">
                 {selectedKb
-                  ? '提问时系统将通过阿里百炼 text-embedding-v2 生成 1536 维向量，并通过 pgvector 执行余弦相似度检索匹配。'
-                  : '随时在上方挂载企业知识库，或者直接提问开始对话。'}
+                  ? `已关联知识库「${selectedKb.name}」，输入问题将通过百炼 text-embedding-v2 生成 1536 维向量检索。`
+                  : '随时在上方下拉切换 Claude 4.6、DeepSeek V4、Gemini 3.8 或 Grok 4.6 等中转站全量模型。'}
               </p>
             </div>
 
@@ -418,7 +503,7 @@ export const ChatPage: React.FC = () => {
 
             return (
               <div key={msg.id} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
-                {/* 角色标识与时间 */}
+                {/* 角色标识 */}
                 <div className="text-[10px] font-mono text-[#A5A5A5] mb-1 px-1">
                   {isUser ? 'YOU' : 'ASSISTANT'}
                 </div>
@@ -457,7 +542,7 @@ export const ChatPage: React.FC = () => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 底部输入框 */}
+      {/* 底部输入栏 */}
       <div className="border-t border-[#EDEDED] bg-white p-3 safe-bottom z-10">
         <form
           onSubmit={(e) => {
@@ -469,7 +554,9 @@ export const ChatPage: React.FC = () => {
           <input
             type="text"
             placeholder={
-              selectedKb ? `向「${selectedKb.name}」提问...` : '输入您的问题...'
+              selectedModel
+                ? `向 ${selectedModel.name} 提问...`
+                : '输入您的问题...'
             }
             className="flex-1 bg-[#FAFAFA] border border-[#EDEDED] rounded-lg px-3.5 py-2 text-sm text-[#151515] placeholder:text-[#A5A5A5] focus:outline-none focus:border-[#151515] transition-colors"
             value={inputText}

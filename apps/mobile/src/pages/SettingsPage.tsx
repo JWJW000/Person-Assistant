@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../store';
 import {
-  RefreshCw,
   LogOut,
+  RefreshCw,
 } from 'lucide-react';
 import { getInstalledVersion, isAndroidApp } from '../updater';
 
 export const SettingsPage: React.FC = () => {
-  const { serverUrl, currentUser, activeKbId, knowledgeBases, logout } =
+  const { serverUrl, currentUser, activeKbId, knowledgeBases, activeModelId, chatModels, logout } =
     useAppStore();
   const [appVersion, setAppVersion] = useState<string>('');
 
@@ -20,13 +20,14 @@ export const SettingsPage: React.FC = () => {
   }, []);
 
   const selectedKb = knowledgeBases.find((kb) => kb.id === activeKbId);
+  const selectedModel = chatModels.find((m) => m.id === activeModelId);
 
   return (
     <div className="flex flex-col h-full bg-white text-[#151515] overflow-y-auto antialiased">
       {/* 顶部标题栏 */}
       <header className="safe-top bg-white border-b border-[#EDEDED] px-4 py-3 sticky top-0 z-20">
         <h1 className="text-base font-semibold text-[#151515] tracking-tight">
-          系统与账号设置
+          系统与账号配置
         </h1>
       </header>
 
@@ -58,33 +59,29 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* 基础设施与模型配置 */}
-        <div className="bg-white border border-[#EDEDED] rounded-xl p-4 shadow-[0_1px_2px_rgba(0,0,0,0.02)] flex flex-col gap-3">
-          <div className="text-xs font-mono text-[#A5A5A5] uppercase tracking-wider">
-            INFRASTRUCTURE & VECTOR
+        {/* 当前活跃大模型与中转站 */}
+        <div className="bg-white border border-[#EDEDED] rounded-xl p-4 shadow-[0_1px_2px_rgba(0,0,0,0.02)] flex flex-col gap-2.5">
+          <div className="flex items-center justify-between text-xs font-mono text-[#A5A5A5] uppercase tracking-wider">
+            <span>ACTIVE LLM & RELAY</span>
+            <span>{chatModels.length} 个模型已接入</span>
           </div>
 
-          <div className="flex flex-col gap-2 divide-y divide-[#EDEDED] text-xs">
-            <div className="flex items-center justify-between py-1.5">
-              <span className="text-[#757575]">向量数据库</span>
-              <span className="font-mono font-medium text-[#151515]">PostgreSQL 16 (pgvector)</span>
+          <div className="p-3 bg-[#FAFAFA] border border-[#EDEDED] rounded-lg flex flex-col gap-1">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-[#151515]">
+                {selectedModel ? selectedModel.name : 'DeepSeek V4 Pro'}
+              </span>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#EDEDED] text-[#151515]">
+                newapi.5wjw.cn
+              </span>
             </div>
-            <div className="flex items-center justify-between py-1.5">
-              <span className="text-[#757575]">默认嵌入模型</span>
-              <span className="font-mono font-medium text-[#151515]">阿里百炼 text-embedding-v2</span>
-            </div>
-            <div className="flex items-center justify-between py-1.5">
-              <span className="text-[#757575]">向量检索规格</span>
-              <span className="font-mono text-[#151515]">1536 维 / HNSW 余弦度量</span>
-            </div>
-            <div className="flex items-center justify-between py-1.5">
-              <span className="text-[#757575]">API 网关地址</span>
-              <span className="font-mono text-[#757575] truncate max-w-[200px]">{serverUrl}</span>
-            </div>
+            <span className="text-xs font-mono text-[#757575]">
+              模型标识: {selectedModel ? selectedModel.modelName : 'deepseek-v4-pro'}
+            </span>
           </div>
         </div>
 
-        {/* 知识库状态 */}
+        {/* 知识底座状态 */}
         <div className="bg-white border border-[#EDEDED] rounded-xl p-4 shadow-[0_1px_2px_rgba(0,0,0,0.02)] flex flex-col gap-2">
           <div className="flex items-center justify-between text-xs font-mono text-[#A5A5A5] uppercase tracking-wider">
             <span>ACTIVE KNOWLEDGE BASE</span>
@@ -97,9 +94,35 @@ export const SettingsPage: React.FC = () => {
             </span>
             <span className="text-xs text-[#757575] leading-normal">
               {selectedKb
-                ? selectedKb.description || `切片大小 ${selectedKb.chunkSize || 500} 字符，重叠 ${selectedKb.chunkOverlap || 50} 字符`
+                ? selectedKb.description || `切片大小 ${selectedKb.chunkSize || 500} 字符`
                 : '可在对话页面的顶部下拉框中随时关联具体的知识库。'}
             </span>
+          </div>
+        </div>
+
+        {/* 基础设施与向量规格 */}
+        <div className="bg-white border border-[#EDEDED] rounded-xl p-4 shadow-[0_1px_2px_rgba(0,0,0,0.02)] flex flex-col gap-3">
+          <div className="text-xs font-mono text-[#A5A5A5] uppercase tracking-wider">
+            INFRASTRUCTURE SPEC
+          </div>
+
+          <div className="flex flex-col gap-2 divide-y divide-[#EDEDED] text-xs">
+            <div className="flex items-center justify-between py-1.5">
+              <span className="text-[#757575]">向量数据库</span>
+              <span className="font-mono font-medium text-[#151515]">PostgreSQL 16 (pgvector)</span>
+            </div>
+            <div className="flex items-center justify-between py-1.5">
+              <span className="text-[#757575]">向量嵌入模型</span>
+              <span className="font-mono font-medium text-[#151515]">阿里百炼 text-embedding-v2</span>
+            </div>
+            <div className="flex items-center justify-between py-1.5">
+              <span className="text-[#757575]">向量维度</span>
+              <span className="font-mono text-[#151515]">1536 维 (L2 归一化)</span>
+            </div>
+            <div className="flex items-center justify-between py-1.5">
+              <span className="text-[#757575]">API 网关</span>
+              <span className="font-mono text-[#757575] truncate max-w-[200px]">{serverUrl}</span>
+            </div>
           </div>
         </div>
 
@@ -107,7 +130,7 @@ export const SettingsPage: React.FC = () => {
         <div className="bg-white border border-[#EDEDED] rounded-xl p-4 shadow-[0_1px_2px_rgba(0,0,0,0.02)] flex flex-col gap-3">
           <div className="flex items-center justify-between text-xs font-mono text-[#A5A5A5] uppercase tracking-wider">
             <span>CLIENT VERSION</span>
-            <span className="text-xs font-mono text-[#151515] font-medium">{appVersion || 'v0.9.5'}</span>
+            <span className="text-xs font-mono text-[#151515] font-medium">{appVersion || 'v0.9.8'}</span>
           </div>
 
           {isAndroidApp() && (

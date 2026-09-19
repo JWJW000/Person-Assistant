@@ -17,6 +17,15 @@ export interface KnowledgeBaseItem {
   embeddingModelId?: number;
 }
 
+export interface AiModelItem {
+  id: number;
+  name: string;
+  provider: string;
+  modelType: string;
+  modelName: string;
+  isDefault: string;
+}
+
 interface AppState {
   serverUrl: string;
   accessToken: string | null;
@@ -26,6 +35,8 @@ interface AppState {
   conversations: ConversationItem[];
   activeKbId: number | null;
   knowledgeBases: KnowledgeBaseItem[];
+  activeModelId: number | null;
+  chatModels: AiModelItem[];
 
   setServerUrl: (url: string) => void;
   setAccessToken: (token: string | null) => void;
@@ -35,6 +46,8 @@ interface AppState {
   setConversations: (items: ConversationItem[]) => void;
   setActiveKbId: (kbId: number | null) => void;
   setKnowledgeBases: (bases: KnowledgeBaseItem[]) => void;
+  setActiveModelId: (modelId: number | null) => void;
+  setChatModels: (models: AiModelItem[]) => void;
   logout: () => void;
 }
 
@@ -50,6 +63,11 @@ export const useAppStore = create<AppState>((set) => ({
     return v && v !== 'null' ? Number(v) : null;
   })(),
   knowledgeBases: [],
+  activeModelId: (() => {
+    const v = localStorage.getItem('active_model_id');
+    return v && v !== 'null' ? Number(v) : null;
+  })(),
+  chatModels: [],
 
   setServerUrl: (url) => {
     localStorage.setItem('server_url', url);
@@ -101,18 +119,32 @@ export const useAppStore = create<AppState>((set) => ({
 
   setKnowledgeBases: (bases) => set({ knowledgeBases: bases }),
 
+  setActiveModelId: (modelId) => {
+    if (modelId !== null) {
+      localStorage.setItem('active_model_id', String(modelId));
+    } else {
+      localStorage.removeItem('active_model_id');
+    }
+    set({ activeModelId: modelId });
+  },
+
+  setChatModels: (models) => set({ chatModels: models }),
+
   logout: () => {
     localStorage.removeItem('access_token');
     localStorage.removeItem('device_token');
     localStorage.removeItem('current_user');
     localStorage.removeItem('active_kb_id');
+    localStorage.removeItem('active_model_id');
     set({
       accessToken: null,
       deviceToken: null,
       currentUser: null,
       activeKbId: null,
+      activeModelId: null,
       conversations: [],
       knowledgeBases: [],
+      chatModels: [],
     });
   },
 }));

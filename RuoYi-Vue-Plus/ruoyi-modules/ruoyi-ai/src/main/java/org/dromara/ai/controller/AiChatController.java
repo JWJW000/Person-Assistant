@@ -69,8 +69,9 @@ public class AiChatController extends BaseController {
     public SseEmitter streamChatGet(
         @RequestParam String sessionId,
         @RequestParam String message,
-        @RequestParam(required = false) Long kbId) {
-        return chatService.streamChat(sessionId, message, kbId);
+        @RequestParam(required = false) Long kbId,
+        @RequestParam(required = false) Long modelId) {
+        return chatService.streamChat(sessionId, message, kbId, modelId);
     }
 
     @PostMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -78,6 +79,7 @@ public class AiChatController extends BaseController {
         String sessionId = body.get("sessionId").toString();
         String message = body.get("message").toString();
         Long kbId = body.get("kbId") != null ? Long.valueOf(body.get("kbId").toString()) : null;
-        return chatService.streamChat(sessionId, message, kbId);
+        Long modelId = body.get("modelId") != null ? Long.valueOf(body.get("modelId").toString()) : null;
+        return chatService.streamChat(sessionId, message, kbId, modelId);
     }
 }

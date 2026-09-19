@@ -35,4 +35,9 @@ public interface IAiChatService {
      * 发送消息并进行流式 SSE 打字机响应（自动落库）
      */
     SseEmitter streamChat(String sessionId, String userMessage, Long kbId);
+
+    /**
+     * 发送消息并指定特定模型进行流式 SSE 打字机响应（自动落库）
+     */
+    SseEmitter streamChat(String sessionId, String userMessage, Long kbId, Long modelId);
 }
