@@ -57,6 +57,47 @@ async function copyToClipboard(text: string): Promise<boolean> {
   }
 }
 
+const InlineCodeChip: React.FC<{ children: any }> = ({ children }) => {
+  const [copied, setCopied] = useState(false);
+
+  const extractText = (node: any): string => {
+    if (typeof node === 'string') return node;
+    if (Array.isArray(node)) return node.map(extractText).join('');
+    if (node?.props?.children) return extractText(node.props.children);
+    return '';
+  };
+
+  const text = extractText(children);
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const ok = await copyToClipboard(text);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <span
+      onClick={handleCopy}
+      className={`inline-flex items-center gap-1 my-0.5 mx-0.5 px-1.5 py-0.5 rounded-md font-mono text-xs break-all cursor-pointer transition-colors border select-none active:scale-[0.98] ${
+        copied
+          ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+          : 'bg-[#F5F5F5] hover:bg-[#EAEAEA] text-[#151515] border-[#EDEDED]'
+      }`}
+      title="点击直接复制此内容"
+    >
+      <span className="break-all">{children}</span>
+      {copied ? (
+        <Check className="w-3 h-3 text-emerald-600 shrink-0 inline" />
+      ) : (
+        <Copy className="w-3 h-3 text-[#A5A5A5] hover:text-[#151515] shrink-0 inline opacity-70 hover:opacity-100" />
+      )}
+    </span>
+  );
+};
+
 const MarkdownCodeBlock: React.FC<{ children: any }> = ({ children }) => {
   const [copied, setCopied] = useState(false);
 
@@ -593,7 +634,20 @@ export const ChatPage: React.FC = () => {
                   {isUser ? (
                     <div className="whitespace-pre-wrap break-words [word-break:break-word]">{msg.content}</div>
                   ) : (
-                    <div className="min-w-0 overflow-hidden">
+                    <div className="min-w-0 overflow-hidden relative">
+                      {/* 消息框内右上角轻量复制按钮 */}
+                      <button
+                        onClick={() => handleCopyMessage(msg.content, msg.id)}
+                        className="float-right ml-2 mb-1 p-1 rounded-md text-[#A5A5A5] hover:text-[#151515] hover:bg-[#F5F5F5] transition-colors cursor-pointer"
+                        title="复制消息全部内容"
+                      >
+                        {copiedMsgId === msg.id ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+
                       {isRagAnswer && (
                         <div className="mb-2 pb-2 border-b border-[#EDEDED] flex items-center gap-1.5 text-xs text-[#757575] font-mono">
                           <span className="w-1.5 h-1.5 rounded-full bg-[#151515]" />
@@ -609,11 +663,7 @@ export const ChatPage: React.FC = () => {
                             },
                             code({ inline, children, ...props }: any) {
                               if (inline) {
-                                return (
-                                  <code className="bg-[#F5F5F5] text-[#151515] border border-[#EDEDED] px-1 py-0.5 rounded font-mono text-xs break-all" {...props}>
-                                    {children}
-                                  </code>
-                                );
+                                return <InlineCodeChip>{children}</InlineCodeChip>;
                               }
                               return <code className="font-mono text-xs break-all" {...props}>{children}</code>;
                             },
