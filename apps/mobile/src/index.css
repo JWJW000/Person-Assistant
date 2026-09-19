@@ -64,3 +64,27 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #C5C5C5;
 }
+
+/* Markdown 内容与超长字符防溢出安全限制 */
+.prose {
+  max-width: 100% !important;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.prose pre {
+  max-width: 100% !important;
+  overflow-x: auto !important;
+  white-space: pre !important;
+}
+
+.prose code {
+  word-break: break-all !important;
+  white-space: pre-wrap !important;
+}
+
+.prose table {
+  display: block;
+  max-width: 100% !important;
+  overflow-x: auto !important;
+}

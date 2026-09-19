@@ -16,6 +16,7 @@ import {
   Plus,
   Menu,
   Check,
+  Copy,
   ChevronDown,
   RefreshCw,
   Database,
@@ -32,6 +33,68 @@ interface DisplayMessage {
   isStreaming?: boolean;
   createTime?: string;
 }
+
+async function copyToClipboard(text: string): Promise<boolean> {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {}
+  }
+  try {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.opacity = '0';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    const successful = document.execCommand('copy');
+    document.body.removeChild(textArea);
+    return successful;
+  } catch {
+    return false;
+  }
+}
+
+const MarkdownCodeBlock: React.FC<{ children: any }> = ({ children }) => {
+  const [copied, setCopied] = useState(false);
+
+  const extractText = (node: any): string => {
+    if (typeof node === 'string') return node;
+    if (Array.isArray(node)) return node.map(extractText).join('');
+    if (node?.props?.children) return extractText(node.props.children);
+    return '';
+  };
+
+  const text = extractText(children);
+
+  const handleCopy = async () => {
+    const ok = await copyToClipboard(text);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <div className="relative my-2 max-w-full overflow-hidden rounded-lg border border-[#EDEDED] bg-[#F5F5F5]">
+      <div className="flex items-center justify-between px-3 py-1 bg-[#EAEAEA] border-b border-[#EDEDED] text-[10px] font-mono text-[#757575]">
+        <span>CODE / KEY</span>
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1 hover:text-[#151515] transition-colors cursor-pointer"
+        >
+          {copied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+          <span>{copied ? '已复制' : '复制代码'}</span>
+        </button>
+      </div>
+      <pre className="p-3 text-xs font-mono text-[#151515] overflow-x-auto max-w-full leading-normal whitespace-pre">
+        {children}
+      </pre>
+    </div>
+  );
+};
 
 const PROMPT_SUGGESTIONS = [
   {
@@ -72,6 +135,15 @@ export const ChatPage: React.FC = () => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [kbDropdownOpen, setKbDropdownOpen] = useState(false);
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const [copiedMsgId, setCopiedMsgId] = useState<string | number | null>(null);
+
+  const handleCopyMessage = async (content: string, id: string | number) => {
+    const ok = await copyToClipboard(content);
+    if (ok) {
+      setCopiedMsgId(id);
+      setTimeout(() => setCopiedMsgId(null), 2000);
+    }
+  };
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -504,32 +576,60 @@ export const ChatPage: React.FC = () => {
             const isRagAnswer = !isUser && msg.content.includes('【AI 知识库 RAG 检索命中】');
 
             return (
-              <div key={msg.id} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}>
+              <div key={msg.id} className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-full min-w-0`}>
                 {/* 角色标识 */}
                 <div className="text-[10px] font-mono text-[#A5A5A5] mb-1 px-1">
                   {isUser ? 'YOU' : 'ASSISTANT'}
                 </div>
 
-                {/* 气泡 */}
+                {/* 气泡容器 (防溢出 + 完整折行保护) */}
                 <div
-                  className={`max-w-[88%] text-sm leading-relaxed ${
+                  className={`max-w-[92%] sm:max-w-[85%] min-w-0 text-sm leading-relaxed break-words [word-break:break-word] overflow-hidden ${
                     isUser
                       ? 'bg-[#151515] text-white rounded-xl px-3.5 py-2.5'
-                      : 'bg-white border border-[#EDEDED] text-[#151515] rounded-xl px-4 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.02)]'
+                      : 'bg-white border border-[#EDEDED] text-[#151515] rounded-xl p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.02)]'
                   }`}
                 >
                   {isUser ? (
-                    <div className="whitespace-pre-wrap">{msg.content}</div>
+                    <div className="whitespace-pre-wrap break-words [word-break:break-word]">{msg.content}</div>
                   ) : (
-                    <div>
+                    <div className="min-w-0 overflow-hidden">
                       {isRagAnswer && (
                         <div className="mb-2 pb-2 border-b border-[#EDEDED] flex items-center gap-1.5 text-xs text-[#757575] font-mono">
                           <span className="w-1.5 h-1.5 rounded-full bg-[#151515]" />
                           <span>pgvector 知识检索命中</span>
                         </div>
                       )}
-                      <div className="prose prose-sm max-w-none text-[#151515] prose-p:my-1 prose-pre:my-2 prose-pre:p-3 prose-pre:rounded-lg prose-pre:bg-[#F5F5F5] prose-pre:text-[#151515] prose-pre:border prose-pre:border-[#EDEDED]">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                      <div className="prose prose-sm max-w-full overflow-hidden text-[#151515] break-words [word-break:break-word] prose-p:my-1">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            pre({ children }) {
+                              return <MarkdownCodeBlock>{children}</MarkdownCodeBlock>;
+                            },
+                            code({ inline, children, ...props }: any) {
+                              if (inline) {
+                                return (
+                                  <code className="bg-[#F5F5F5] text-[#151515] border border-[#EDEDED] px-1 py-0.5 rounded font-mono text-xs break-all" {...props}>
+                                    {children}
+                                  </code>
+                                );
+                              }
+                              return <code className="font-mono text-xs break-all" {...props}>{children}</code>;
+                            },
+                            table({ children, ...props }) {
+                              return (
+                                <div className="overflow-x-auto my-2 max-w-full border border-[#EDEDED] rounded-lg">
+                                  <table className="w-full text-xs text-left divide-y divide-[#EDEDED]" {...props}>
+                                    {children}
+                                  </table>
+                                </div>
+                              );
+                            }
+                          }}
+                        >
+                          {msg.content}
+                        </ReactMarkdown>
                         {msg.isStreaming && (
                           <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-[#151515] animate-pulse align-middle" />
                         )}
@@ -537,6 +637,32 @@ export const ChatPage: React.FC = () => {
                     </div>
                   )}
                 </div>
+
+                {/* 消息底部工具栏 (复制按钮) */}
+                {!isUser && msg.content && (
+                  <div className="flex items-center gap-2 mt-1 px-1">
+                    <button
+                      onClick={() => handleCopyMessage(msg.content, msg.id)}
+                      className="flex items-center gap-1 text-[11px] text-[#757575] hover:text-[#151515] py-0.5 px-1.5 rounded hover:bg-[#F5F5F5] transition-colors cursor-pointer"
+                      title="复制回答内容"
+                    >
+                      {copiedMsgId === msg.id ? (
+                        <>
+                          <Check className="w-3 h-3 text-emerald-600" />
+                          <span className="text-emerald-600 font-medium">已复制</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3" />
+                          <span>复制</span>
+                        </>
+                      )}
+                    </button>
+                    <span className="text-[10px] text-[#A5A5A5] font-mono">
+                      {msg.content.length} 字符
+                    </span>
+                  </div>
+                )}
               </div>
             );
           })
