@@ -13,6 +13,10 @@ import org.dromara.ai.mapper.AiChatSessionMapper;
 import org.dromara.ai.mapper.AiModelConfigMapper;
 import org.dromara.ai.service.IAiChatService;
 import org.dromara.ai.service.IAiKnowledgeService;
+import org.dromara.common.core.domain.PageResult;
+import org.dromara.common.core.utils.StringUtils;
+import org.dromara.common.mybatis.core.page.PageQuery;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.dromara.common.satoken.utils.LoginHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -34,6 +38,40 @@ import java.util.concurrent.CompletableFuture;
 @Service
 @RequiredArgsConstructor
 public class AiChatServiceImpl implements IAiChatService {
+
+    @Override
+    public PageResult<AiChatSession> selectSessionList(AiChatSession session, PageQuery pageQuery) {
+        LambdaQueryWrapper<AiChatSession> lqw = new LambdaQueryWrapper<>();
+        if (session != null) {
+            lqw.like(StringUtils.isNotBlank(session.getTitle()), AiChatSession::getTitle, session.getTitle())
+               .eq(session.getUserId() != null, AiChatSession::getUserId, session.getUserId())
+               .eq(StringUtils.isNotBlank(session.getStatus()), AiChatSession::getStatus, session.getStatus());
+        }
+        lqw.ne(AiChatSession::getStatus, "2");
+        lqw.orderByDesc(AiChatSession::getUpdateTime);
+        Page<AiChatSession> page = sessionMapper.selectPage(pageQuery.build(), lqw);
+        return PageResult.build(page.getRecords(), page.getTotal());
+    }
+
+    @Override
+    public PageResult<AiChatMessage> selectMessageList(AiChatMessage message, PageQuery pageQuery) {
+        LambdaQueryWrapper<AiChatMessage> lqw = new LambdaQueryWrapper<>();
+        if (message != null) {
+            lqw.eq(StringUtils.isNotBlank(message.getSessionId()), AiChatMessage::getSessionId, message.getSessionId())
+               .eq(StringUtils.isNotBlank(message.getRole()), AiChatMessage::getRole, message.getRole())
+               .eq(StringUtils.isNotBlank(message.getModelName()), AiChatMessage::getModelName, message.getModelName())
+               .like(StringUtils.isNotBlank(message.getContent()), AiChatMessage::getContent, message.getContent());
+        }
+        lqw.orderByDesc(AiChatMessage::getCreateTime);
+        Page<AiChatMessage> page = messageMapper.selectPage(pageQuery.build(), lqw);
+        return PageResult.build(page.getRecords(), page.getTotal());
+    }
+
+    @Override
+    public boolean deleteMessageById(Long messageId) {
+        return messageMapper.deleteById(messageId) > 0;
+    }
+
 
     private final AiChatSessionMapper sessionMapper;
     private final AiChatMessageMapper messageMapper;

@@ -5,6 +5,8 @@ import org.dromara.ai.domain.entity.AiChatMessage;
 import org.dromara.ai.domain.entity.AiChatSession;
 import org.dromara.ai.service.IAiChatService;
 import org.dromara.common.core.domain.R;
+import org.dromara.common.core.domain.PageResult;
+import org.dromara.common.mybatis.core.page.PageQuery;
 import org.dromara.common.web.core.BaseController;
 import org.springframework.http.MediaType;
 import org.springframework.validation.annotation.Validated;
@@ -24,6 +26,31 @@ import java.util.Map;
 @RequestMapping("/ai/chat")
 @RequiredArgsConstructor
 public class AiChatController extends BaseController {
+
+    /**
+     * 分页查询全平台会话管理列表
+     */
+    @GetMapping("/session/list")
+    public R<PageResult<AiChatSession>> listSessions(AiChatSession session, PageQuery pageQuery) {
+        return R.ok(chatService.selectSessionList(session, pageQuery));
+    }
+
+    /**
+     * 分页查询消息审计记录列表
+     */
+    @GetMapping("/message/list")
+    public R<PageResult<AiChatMessage>> listMessages(AiChatMessage message, PageQuery pageQuery) {
+        return R.ok(chatService.selectMessageList(message, pageQuery));
+    }
+
+    /**
+     * 删除单条消息
+     */
+    @DeleteMapping("/message/{id}")
+    public R<Void> removeMessage(@PathVariable Long id) {
+        return toAjax(chatService.deleteMessageById(id));
+    }
+
 
     private final IAiChatService chatService;
 

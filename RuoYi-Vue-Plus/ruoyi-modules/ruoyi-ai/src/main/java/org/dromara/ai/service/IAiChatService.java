@@ -2,6 +2,8 @@ package org.dromara.ai.service;
 
 import org.dromara.ai.domain.entity.AiChatMessage;
 import org.dromara.ai.domain.entity.AiChatSession;
+import org.dromara.common.core.domain.PageResult;
+import org.dromara.common.mybatis.core.page.PageQuery;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
@@ -40,4 +42,20 @@ public interface IAiChatService {
      * 发送消息并指定特定模型进行流式 SSE 打字机响应（自动落库）
      */
     SseEmitter streamChat(String sessionId, String userMessage, Long kbId, Long modelId);
+
+    /**
+     * 分页查询会话列表 (管理端)
+     */
+    PageResult<AiChatSession> selectSessionList(AiChatSession session, PageQuery pageQuery);
+
+    /**
+     * 分页查询消息明细列表 (管理端审计)
+     */
+    PageResult<AiChatMessage> selectMessageList(AiChatMessage message, PageQuery pageQuery);
+
+    /**
+     * 删除单条消息记录
+     */
+    boolean deleteMessageById(Long messageId);
+
 }

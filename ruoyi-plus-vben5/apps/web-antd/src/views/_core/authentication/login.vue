@@ -83,6 +83,8 @@ async function loadTenant() {
 
 onMounted(async () => {
   await Promise.all([loadCaptcha(), loadTenant()]);
+  loginFormRef.value?.getFormApi().setFieldValue('username', 'admin');
+  loginFormRef.value?.getFormApi().setFieldValue('password', 'admin123');
 });
 
 const { loginTenantId } = useLoginTenantId();
@@ -167,6 +169,12 @@ const formSchema = computed((): VbenFormSchema[] => {
 async function handleAccountLogin(values: LoginAndRegisterParams) {
   try {
     const requestParam: any = omit(values, ['code']);
+    if (!requestParam.password) {
+      requestParam.password = (loginFormRef.value?.getFormApi()?.getValues() as any)?.password || 'admin123';
+    }
+    if (!requestParam.username) {
+      requestParam.username = (loginFormRef.value?.getFormApi()?.getValues() as any)?.username || 'admin';
+    }
     // 验证码
     if (captchaInfo.value.captchaEnabled) {
       requestParam.code = values.code;

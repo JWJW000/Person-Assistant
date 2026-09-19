@@ -1,10 +1,47 @@
 import { alovaInstance } from '#/utils/http';
 
+export interface AiChatSession {
+  id: string;
+  userId?: number;
+  assistantId?: number;
+  title: string;
+  isPinned?: string;
+  lastMessagePreview?: string;
+  messageCount?: number;
+  status?: string;
+  createTime?: string;
+  updateTime?: string;
+}
+
+export interface AiChatMessage {
+  id?: number;
+  sessionId: string;
+  userId?: number;
+  role: 'user' | 'assistant' | 'system' | string;
+  content: string;
+  citations?: any;
+  modelName?: string;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  responseTimeMs?: number;
+  status?: string;
+  errorMsg?: string;
+  createTime?: string;
+}
+
 /**
- * 获取会话列表
+ * 分页查询后台会话管理列表
+ */
+export function getSessionListApi(params?: any) {
+  return alovaInstance.Get<any>('/ai/chat/session/list', { params });
+}
+
+/**
+ * 获取当前用户的全部会话列表 (前台对话用)
  */
 export function getSessionsApi() {
-  return alovaInstance.Get<any[]>('/ai/chat/sessions');
+  return alovaInstance.Get<AiChatSession[]>('/ai/chat/sessions');
 }
 
 /**
@@ -22,8 +59,22 @@ export function deleteSessionApi(sessionId: string) {
 }
 
 /**
- * 获取会话消息详情列表
+ * 分页查询后台消息审计列表
+ */
+export function getMessageListApi(params?: any) {
+  return alovaInstance.Get<any>('/ai/chat/message/list', { params });
+}
+
+/**
+ * 获取特定会话的全部消息记录
  */
 export function getMessagesApi(sessionId: string) {
-  return alovaInstance.Get<any[]>(`/ai/chat/messages/${sessionId}`);
+  return alovaInstance.Get<AiChatMessage[]>(`/ai/chat/messages/${sessionId}`);
+}
+
+/**
+ * 删除单条消息记录
+ */
+export function deleteMessageApi(id: number) {
+  return alovaInstance.Delete<boolean>(`/ai/chat/message/${id}`);
 }
