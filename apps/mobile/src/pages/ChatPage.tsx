@@ -80,29 +80,31 @@ export const ChatPage: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
   }, []);
 
-  // 1. 获取模型列表
+  // 1. 获取模型列表 (绝不为空)
   const loadModels = useCallback(async () => {
-    if (!serverUrl || !accessToken) return;
     try {
       const models = await fetchChatModels(serverUrl, accessToken);
-      setChatModels(models);
-      if (activeModelId === null && models.length > 0) {
-        const def = models.find((m) => m.isDefault === '1') || models[0];
-        setActiveModelId(def.id);
+      if (models && models.length > 0) {
+        setChatModels(models);
+        if (activeModelId === null) {
+          const def = models.find((m) => m.isDefault === '1') || models[0];
+          setActiveModelId(def.id);
+        }
       }
     } catch (err) {
       console.warn('加载模型列表失败:', err);
     }
   }, [serverUrl, accessToken, activeModelId, setActiveModelId, setChatModels]);
 
-  // 2. 获取知识库列表
+  // 2. 获取知识库列表 (绝不为空)
   const loadKnowledgeBases = useCallback(async () => {
-    if (!serverUrl || !accessToken) return;
     try {
       const bases = await fetchKnowledgeBases(serverUrl, accessToken);
-      setKnowledgeBases(bases);
-      if (activeKbId === null && bases.length > 0) {
-        setActiveKbId(bases[0].id);
+      if (bases && bases.length > 0) {
+        setKnowledgeBases(bases);
+        if (activeKbId === null) {
+          setActiveKbId(bases[0].id);
+        }
       }
     } catch (err) {
       console.warn('加载知识库失败:', err);

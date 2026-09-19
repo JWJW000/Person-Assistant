@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { DEFAULT_RELAY_MODELS, DEFAULT_KNOWLEDGE_BASES } from './lib/aiApi';
 
 export interface ConversationItem {
   id: string;
@@ -60,14 +61,14 @@ export const useAppStore = create<AppState>((set) => ({
   conversations: [],
   activeKbId: (() => {
     const v = localStorage.getItem('active_kb_id');
-    return v && v !== 'null' ? Number(v) : null;
+    return v && v !== 'null' ? Number(v) : 4; // 默认挂载系统核心知识库
   })(),
-  knowledgeBases: [],
+  knowledgeBases: DEFAULT_KNOWLEDGE_BASES,
   activeModelId: (() => {
     const v = localStorage.getItem('active_model_id');
-    return v && v !== 'null' ? Number(v) : null;
+    return v && v !== 'null' ? Number(v) : 7; // 默认选用 DeepSeek V4 Pro (id: 7)
   })(),
-  chatModels: [],
+  chatModels: DEFAULT_RELAY_MODELS,
 
   setServerUrl: (url) => {
     localStorage.setItem('server_url', url);
@@ -140,11 +141,11 @@ export const useAppStore = create<AppState>((set) => ({
       accessToken: null,
       deviceToken: null,
       currentUser: null,
-      activeKbId: null,
-      activeModelId: null,
+      activeKbId: 4,
+      activeModelId: 7,
       conversations: [],
-      knowledgeBases: [],
-      chatModels: [],
+      knowledgeBases: DEFAULT_KNOWLEDGE_BASES,
+      chatModels: DEFAULT_RELAY_MODELS,
     });
   },
 }));

@@ -19,81 +19,154 @@ export interface AiMessageItem {
   createTime?: string;
 }
 
+// 中转站 (https://newapi.5wjw.cn) 预置与保底可用模型列表 (27款主流模型)
+export const DEFAULT_RELAY_MODELS: AiModelItem[] = [
+  { id: 7, name: 'DeepSeek V4 Pro (旗舰推理)', modelName: 'deepseek-v4-pro', provider: 'deepseek', modelType: 'chat', isDefault: '1' },
+  { id: 11, name: 'Claude Sonnet 4.6', modelName: 'claude-sonnet-4-6', provider: 'anthropic', modelType: 'chat', isDefault: '0' },
+  { id: 12, name: 'Claude Opus 4.6 (深度思考)', modelName: 'claude-opus-4-6-thinking', provider: 'anthropic', modelType: 'chat', isDefault: '0' },
+  { id: 13, name: 'Gemini 3.8 Flash High (顶配)', modelName: 'gemini-3.8-flash-high', provider: 'google', modelType: 'chat', isDefault: '0' },
+  { id: 14, name: 'Gemini 3.7 Flash High', modelName: 'gemini-3.7-flash-high', provider: 'google', modelType: 'chat', isDefault: '0' },
+  { id: 15, name: 'Gemini 3.6 Flash High', modelName: 'gemini-3.6-flash-high', provider: 'google', modelType: 'chat', isDefault: '0' },
+  { id: 16, name: 'Gemini 3.5 Flash Lite', modelName: 'gemini-3.5-flash-lite', provider: 'google', modelType: 'chat', isDefault: '0' },
+  { id: 17, name: 'Gemini 3.1 Pro Low', modelName: 'gemini-3.1-pro-low', provider: 'google', modelType: 'chat', isDefault: '0' },
+  { id: 18, name: 'Gemini 3.1 Flash Lite', modelName: 'gemini-3.1-flash-lite', provider: 'google', modelType: 'chat', isDefault: '0' },
+  { id: 19, name: 'Gemini 3 Flash', modelName: 'gemini-3-flash', provider: 'google', modelType: 'chat', isDefault: '0' },
+  { id: 20, name: 'Gemini Pro Agent (智能体)', modelName: 'gemini-pro-agent', provider: 'google', modelType: 'chat', isDefault: '0' },
+  { id: 8, name: 'DeepSeek V4 Flash (极速高并发)', modelName: 'deepseek-v4-flash', provider: 'deepseek', modelType: 'chat', isDefault: '0' },
+  { id: 9, name: 'DeepSeek V4 Flash Vision (多模态)', modelName: 'deepseek-v4-flash-vision-exp', provider: 'deepseek', modelType: 'chat', isDefault: '0' },
+  { id: 10, name: 'DeepSeek Flash', modelName: 'deepseek-flash', provider: 'deepseek', modelType: 'chat', isDefault: '0' },
+  { id: 21, name: 'xAI Grok 4.6', modelName: 'grok-4.6', provider: 'xai', modelType: 'chat', isDefault: '0' },
+  { id: 22, name: 'xAI Grok 4.5', modelName: 'grok-4.5', provider: 'xai', modelType: 'chat', isDefault: '0' },
+  { id: 23, name: 'xAI Grok 4.3', modelName: 'grok-4.3', provider: 'xai', modelType: 'chat', isDefault: '0' },
+  { id: 24, name: 'xAI Grok 4.20 (深度推理版)', modelName: 'grok-4.20-0309-reasoning', provider: 'xai', modelType: 'chat', isDefault: '0' },
+  { id: 25, name: 'xAI Grok 4.20 (通用直出版)', modelName: 'grok-4.20-0309-non-reasoning', provider: 'xai', modelType: 'chat', isDefault: '0' },
+  { id: 26, name: 'xAI Grok 4.20 Multi-Agent', modelName: 'grok-4.20-multi-agent-0309', provider: 'xai', modelType: 'chat', isDefault: '0' },
+  { id: 27, name: 'xAI Grok 3 Mini', modelName: 'grok-3-mini', provider: 'xai', modelType: 'chat', isDefault: '0' },
+  { id: 28, name: 'xAI Grok 3 Mini Fast', modelName: 'grok-3-mini-fast', provider: 'xai', modelType: 'chat', isDefault: '0' },
+  { id: 29, name: 'xAI Grok Composer 2.5 Fast', modelName: 'grok-composer-2.5-fast', provider: 'xai', modelType: 'chat', isDefault: '0' },
+  { id: 30, name: 'xAI Grok Build', modelName: 'grok-build-0.1', provider: 'xai', modelType: 'chat', isDefault: '0' },
+  { id: 31, name: 'GPT OSS 120B Medium (开源巨兽)', modelName: 'gpt-oss-120b-medium', provider: 'openai', modelType: 'chat', isDefault: '0' },
+  { id: 32, name: 'GPT-5.4 (储备模型)', modelName: 'gpt-5.4', provider: 'openai', modelType: 'chat', isDefault: '0' },
+  { id: 33, name: 'GPT-5.5 (储备模型)', modelName: 'gpt-5.5', provider: 'openai', modelType: 'chat', isDefault: '0' },
+];
+
+export const DEFAULT_KNOWLEDGE_BASES: KnowledgeBaseItem[] = [
+  {
+    id: 4,
+    name: '系统技术核心知识库',
+    description: '基于阿里百炼 1536 维向量模型与 PostgreSQL pgvector 构建的企业知识底座',
+    chunkSize: 500,
+    chunkOverlap: 50,
+    isPublic: '1',
+    embeddingModelId: 5,
+  },
+];
+
 function getBaseUrl(serverUrl: string): string {
   const clean = serverUrl.replace(/\/$/, '');
   return clean.endsWith('/api') ? clean : `${clean}/api`;
 }
 
-function getHeaders(token: string) {
-  return {
+function getHeaders(token?: string | null) {
+  const h: Record<string, string> = {
     'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
     clientid: CLIENT_ID,
   };
+  if (token) {
+    h.Authorization = `Bearer ${token}`;
+  }
+  return h;
 }
 
 /**
- * 获取可用知识库列表 (供下拉选择)
+ * 获取可用知识库列表 (自动降级至默认知识库，保证永远不为空)
  */
-export async function fetchKnowledgeBases(serverUrl: string, token: string): Promise<KnowledgeBaseItem[]> {
-  const url = `${getBaseUrl(serverUrl)}/ai/knowledge/base/all`;
-  const res = await fetch(url, {
-    headers: getHeaders(token),
-  });
-  const json = await res.json();
-  if (json.code === 200 && Array.isArray(json.data)) {
-    return json.data;
+export async function fetchKnowledgeBases(serverUrl: string, token?: string | null): Promise<KnowledgeBaseItem[]> {
+  try {
+    const url = `${getBaseUrl(serverUrl)}/ai/knowledge/base/all`;
+    const res = await fetch(url, {
+      headers: getHeaders(token),
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.code === 200 && Array.isArray(json.data) && json.data.length > 0) {
+        return json.data;
+      }
+    }
+  } catch (err) {
+    console.warn('获取知识库接口异常，采用保底列表:', err);
   }
-  return [];
+  return DEFAULT_KNOWLEDGE_BASES;
 }
 
 /**
- * 获取中转站全部可用对话大模型列表
+ * 获取中转站全部可用对话大模型列表 (自动保底，确保绝不出现 0 个模型)
  */
-export async function fetchChatModels(serverUrl: string, token: string): Promise<AiModelItem[]> {
-  const url = `${getBaseUrl(serverUrl)}/ai/model/all?modelType=chat`;
-  const res = await fetch(url, {
-    headers: getHeaders(token),
-  });
-  const json = await res.json();
-  if (json.code === 200 && Array.isArray(json.data)) {
-    return json.data;
+export async function fetchChatModels(serverUrl: string, token?: string | null): Promise<AiModelItem[]> {
+  try {
+    const url = `${getBaseUrl(serverUrl)}/ai/model/all?modelType=chat`;
+    const res = await fetch(url, {
+      headers: getHeaders(token),
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.code === 200 && Array.isArray(json.data) && json.data.length > 0) {
+        return json.data;
+      }
+    }
+  } catch (err) {
+    console.warn('获取大模型接口异常，采用中转站保底模型列表:', err);
   }
-  return [];
+  return DEFAULT_RELAY_MODELS;
 }
 
 /**
  * 设置服务端当前默认模型
  */
-export async function setDefaultModel(serverUrl: string, token: string, modelId: number): Promise<boolean> {
-  const url = `${getBaseUrl(serverUrl)}/ai/model/default/${modelId}`;
-  const res = await fetch(url, {
-    method: 'PUT',
-    headers: getHeaders(token),
-  });
-  const json = await res.json();
-  return json.code === 200;
+export async function setDefaultModel(serverUrl: string, token: string | null, modelId: number): Promise<boolean> {
+  if (!token) return false;
+  try {
+    const url = `${getBaseUrl(serverUrl)}/ai/model/default/${modelId}`;
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: getHeaders(token),
+    });
+    const json = await res.json();
+    return json.code === 200;
+  } catch {
+    return false;
+  }
 }
 
 /**
  * 获取会话列表
  */
-export async function fetchAiSessions(serverUrl: string, token: string): Promise<AiSessionItem[]> {
-  const url = `${getBaseUrl(serverUrl)}/ai/chat/sessions`;
-  const res = await fetch(url, {
-    headers: getHeaders(token),
-  });
-  const json = await res.json();
-  if (json.code === 200 && Array.isArray(json.data)) {
-    return json.data;
-  }
+export async function fetchAiSessions(serverUrl: string, token?: string | null): Promise<AiSessionItem[]> {
+  if (!token) return [];
+  try {
+    const url = `${getBaseUrl(serverUrl)}/ai/chat/sessions`;
+    const res = await fetch(url, {
+      headers: getHeaders(token),
+    });
+    const json = await res.json();
+    if (json.code === 200 && Array.isArray(json.data)) {
+      return json.data;
+    }
+  } catch {}
   return [];
 }
 
 /**
  * 创建新会话
  */
-export async function createAiSession(serverUrl: string, token: string, title?: string): Promise<AiSessionItem> {
+export async function createAiSession(serverUrl: string, token: string | null, title?: string): Promise<AiSessionItem> {
+  if (!token) {
+    // 离线/临时会话
+    return {
+      id: `local-${Date.now()}`,
+      title: title || '新对话',
+    };
+  }
   const url = `${getBaseUrl(serverUrl)}/ai/chat/session/create`;
   const res = await fetch(url, {
     method: 'POST',
@@ -110,34 +183,42 @@ export async function createAiSession(serverUrl: string, token: string, title?: 
 /**
  * 获取会话历史记录
  */
-export async function fetchAiMessages(serverUrl: string, token: string, sessionId: string): Promise<AiMessageItem[]> {
-  const url = `${getBaseUrl(serverUrl)}/ai/chat/messages/${sessionId}`;
-  const res = await fetch(url, {
-    headers: getHeaders(token),
-  });
-  const json = await res.json();
-  if (json.code === 200 && Array.isArray(json.data)) {
-    return json.data;
-  }
+export async function fetchAiMessages(serverUrl: string, token: string | null, sessionId: string): Promise<AiMessageItem[]> {
+  if (!token || sessionId.startsWith('local-')) return [];
+  try {
+    const url = `${getBaseUrl(serverUrl)}/ai/chat/messages/${sessionId}`;
+    const res = await fetch(url, {
+      headers: getHeaders(token),
+    });
+    const json = await res.json();
+    if (json.code === 200 && Array.isArray(json.data)) {
+      return json.data;
+    }
+  } catch {}
   return [];
 }
 
 /**
  * 删除会话
  */
-export async function deleteAiSession(serverUrl: string, token: string, sessionId: string): Promise<boolean> {
-  const url = `${getBaseUrl(serverUrl)}/ai/chat/session/${sessionId}`;
-  const res = await fetch(url, {
-    method: 'DELETE',
-    headers: getHeaders(token),
-  });
-  const json = await res.json();
-  return json.code === 200;
+export async function deleteAiSession(serverUrl: string, token: string | null, sessionId: string): Promise<boolean> {
+  if (!token || sessionId.startsWith('local-')) return true;
+  try {
+    const url = `${getBaseUrl(serverUrl)}/ai/chat/session/${sessionId}`;
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: getHeaders(token),
+    });
+    const json = await res.json();
+    return json.code === 200;
+  } catch {
+    return false;
+  }
 }
 
 export interface StreamChatOptions {
   serverUrl: string;
-  token: string;
+  token?: string | null;
   sessionId: string;
   message: string;
   kbId?: number | null;
