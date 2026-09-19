@@ -52,6 +52,8 @@ keystore.properties
 *.key
 *.p12
 id_rsa*
+scripts/test-login.js
+scripts/test-*.js
 
 # release artifacts
 *.apk

@@ -4,6 +4,7 @@ import cn.hutool.core.util.IdUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.dromara.ai.domain.entity.AiKnowledgeChunk;
 import org.dromara.ai.domain.entity.AiChatMessage;
 import org.dromara.ai.domain.entity.AiChatSession;
 import org.dromara.ai.domain.entity.AiModelConfig;
@@ -11,6 +12,7 @@ import org.dromara.ai.mapper.AiChatMessageMapper;
 import org.dromara.ai.mapper.AiChatSessionMapper;
 import org.dromara.ai.mapper.AiModelConfigMapper;
 import org.dromara.ai.service.IAiChatService;
+import org.dromara.ai.service.IAiKnowledgeService;
 import org.dromara.common.satoken.utils.LoginHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -36,6 +38,7 @@ public class AiChatServiceImpl implements IAiChatService {
     private final AiChatSessionMapper sessionMapper;
     private final AiChatMessageMapper messageMapper;
     private final AiModelConfigMapper modelConfigMapper;
+    private final IAiKnowledgeService knowledgeService;
 
     @Override
     public List<AiChatSession> getUserSessions() {
@@ -116,11 +119,41 @@ public class AiChatServiceImpl implements IAiChatService {
                     .eq(AiModelConfig::getIsDefault, "1")
                     .last("LIMIT 1"));
 
+                // 检查知识库 RAG 增强
+                String promptToSend = userMessage;
+                List<AiKnowledgeChunk> ragChunks = null;
+                if (kbId != null && kbId > 0) {
+                    try {
+                        ragChunks = knowledgeService.searchChunks(kbId, userMessage, 3, 0.3);
+                        if (ragChunks != null && !ragChunks.isEmpty()) {
+                            StringBuilder ctx = new StringBuilder("【参考知识库内容如下】:\n");
+                            for (int i = 0; i < ragChunks.size(); i++) {
+                                ctx.append(i + 1).append(". ").append(ragChunks.get(i).getContent()).append("\n\n");
+                            }
+                            ctx.append("【用户问题】:\n").append(userMessage).append("\n\n请结合上述参考知识库内容，准确回答用户问题。");
+                            promptToSend = ctx.toString();
+                        }
+                    } catch (Exception e) {
+                        log.warn("知识库向量检索异常: {}", e.getMessage());
+                    }
+                }
+
                 if (config == null || "YOUR_DEEPSEEK_API_KEY".equals(config.getApiKey()) || config.getApiKey() == null) {
                     // 若未配置有效云端 Key，输出友好的快速回显打字机效果并提醒配置
-                    String tip = "【AI 助手已就绪】当前服务端已成功连通 PostgreSQL 向量库与 Redis！\n"
-                        + "请在后台「模型管理」中填入您的 DeepSeek/OpenAI API Key，即可开启完整的智能对话与知识库 RAG 检索。\n\n"
-                        + "您的提问已成功双向持久化落库，会话 ID: `" + sessionId + "`。";
+                    StringBuilder tipBuilder = new StringBuilder();
+                    if (ragChunks != null && !ragChunks.isEmpty()) {
+                        tipBuilder.append("【AI 知识库 RAG 检索命中】已通过 pgvector 向量检索到 ").append(ragChunks.size()).append(" 条高相关切片：\n\n");
+                        for (int i = 0; i < ragChunks.size(); i++) {
+                            tipBuilder.append("➤ 知识片段 ").append(i + 1).append(" (相似度: ").append(ragChunks.get(i).getScore()).append("):\n")
+                                      .append(ragChunks.get(i).getContent()).append("\n\n");
+                        }
+                        tipBuilder.append("【智能归纳提示】在后台「模型管理」填入您的 DeepSeek/OpenAI API Key，即可由大模型进行深度语义润色与智能综合回答。\n");
+                    } else {
+                        tipBuilder.append("【AI 助手已就绪】当前服务端已成功连通 PostgreSQL 向量库与 Redis！\n")
+                            .append("请在后台「模型管理」中填入您的 DeepSeek/OpenAI API Key，即可开启完整的智能对话与知识库 RAG 检索。\n\n")
+                            .append("您的提问已成功双向持久化落库，会话 ID: `").append(sessionId).append("`。");
+                    }
+                    String tip = tipBuilder.toString();
                     
                     for (char c : tip.toCharArray()) {
                         emitter.send(SseEmitter.event().data(String.valueOf(c)));
@@ -131,7 +164,7 @@ public class AiChatServiceImpl implements IAiChatService {
                     emitter.complete();
                 } else {
                     // 调用兼容 OpenAI 协议的流式接口 (DeepSeek / OpenAI 等)
-                    callOpenAiCompatibleStream(config, userMessage, emitter, assistantReply);
+                    callOpenAiCompatibleStream(config, promptToSend, emitter, assistantReply);
                 }
 
                 // 4. 助手回答落库
