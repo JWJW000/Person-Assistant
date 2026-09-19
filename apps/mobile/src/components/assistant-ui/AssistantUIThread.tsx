@@ -75,7 +75,7 @@ export const AssistantUIThread: FC<AssistantUIThreadProps> = ({
               const userText = extra?.content || (message.content?.[0] as any)?.text || '';
               return (
                 <MessagePrimitive.Root className="flex flex-col items-end my-2 group">
-                  <div className="bg-gradient-to-tr from-blue-600 to-indigo-600 text-white rounded-2xl rounded-br-xs px-4 py-2.5 max-w-[85%] text-sm leading-relaxed shadow-xs shadow-blue-600/10">
+                  <div className="bg-[#151515] text-white rounded-xl px-3.5 py-2.5 max-w-[85%] text-sm leading-relaxed">
                     <p className="whitespace-pre-wrap">{userText}</p>
                   </div>
                   <span className="text-[10px] text-slate-400 font-mono mt-1 px-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -92,7 +92,7 @@ export const AssistantUIThread: FC<AssistantUIThreadProps> = ({
             return (
               <MessagePrimitive.Root className="flex flex-col items-start my-2 w-full group">
                 <div className="flex items-start gap-2.5 w-full">
-                  <div className="w-7 h-7 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white flex items-center justify-center flex-shrink-0 shadow-xs mt-0.5">
+                  <div className="w-7 h-7 rounded-xl bg-[#F5F5F5] text-[#151515] border border-[#EDEDED] flex items-center justify-center flex-shrink-0 mt-0.5">
                     <Train className="w-3.5 h-3.5" />
                   </div>
 

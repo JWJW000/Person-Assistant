@@ -26,7 +26,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, onFavorite, onVi
       className="bg-white rounded-2xl p-4 my-2.5 shadow-sm border border-slate-200/70 hover:border-blue-200 flex flex-col gap-3.5 cursor-pointer active:scale-[0.99] transition-all relative overflow-hidden group"
     >
       {/* 顶部微亮条装饰 */}
-      <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-blue-500/0 via-blue-500/40 to-indigo-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
+      <div className="absolute top-0 left-0 right-0 h-0.5 bg-[#EDEDED] opacity-0 group-hover:opacity-100 transition-opacity" />
 
       {/* 头部：车次与历时 */}
       <div className="flex justify-between items-center text-sm">

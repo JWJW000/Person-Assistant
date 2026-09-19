@@ -80,13 +80,13 @@ export const GeminiChatThread: FC<GeminiChatThreadProps> = ({
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
             {/* Gemini 标志性彩色流光微渐变 */}
-            <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-blue-500 via-indigo-500 to-purple-500 p-0.5 shadow-lg shadow-indigo-500/15 mb-4">
+            <div className="w-16 h-16 rounded-3xl bg-[#F5F5F5] border border-[#EDEDED] mb-4 text-[#151515]">
               <div className="w-full h-full bg-white rounded-[22px] flex items-center justify-center text-blue-600">
                 <Sparkles className="w-8 h-8 text-blue-600 fill-blue-50" />
               </div>
             </div>
 
-            <h2 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-transparent mb-2">
+            <h2 className="text-2xl font-bold tracking-tight text-[#151515] font-semibold mb-2">
               您好，今天想聊点什么？
             </h2>
             <p className="text-xs text-slate-500 max-w-sm mb-8 leading-relaxed">
@@ -125,7 +125,7 @@ export const GeminiChatThread: FC<GeminiChatThreadProps> = ({
             return (
               <div key={m.id} className="flex items-start gap-3 my-4 group">
                 {/* Gemini 极光图标 */}
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-500 to-purple-600 text-white flex items-center justify-center flex-shrink-0 shadow-xs shadow-indigo-500/10 mt-0.5">
+                <div className="w-8 h-8 rounded-xl bg-[#151515] text-white flex items-center justify-center flex-shrink-0 mt-0.5">
                   <Sparkles className="w-4 h-4 fill-white/20" />
                 </div>
 
@@ -138,8 +138,8 @@ export const GeminiChatThread: FC<GeminiChatThreadProps> = ({
                         <FormattedMarkdown content={m.content} isStreaming={m.isStreaming} />
                       ) : m.isStreaming ? (
                         <div className="flex items-center gap-1.5 py-1 text-slate-400 text-xs">
-                          <span className="w-2 h-2 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 animate-pulse" />
-                          <span className="font-medium bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent animate-pulse">
+                          <span className="w-2 h-2 rounded-full bg-[#151515] animate-pulse" />
+                          <span className="font-medium text-[#151515] font-mono animate-pulse">
                             思考中...
                           </span>
                         </div>
@@ -177,7 +177,7 @@ export const GeminiChatThread: FC<GeminiChatThreadProps> = ({
       </div>
 
       {/* 底部 Gemini 风格独立浮动输入框 */}
-      <div className="safe-bottom bg-gradient-to-t from-white via-white/95 to-transparent px-4 pb-3 pt-2">
+      <div className="safe-bottom bg-white border-t border-[#EDEDED] px-4 pb-3 pt-2">
         <div className="max-w-3xl mx-auto relative bg-[#F0F4F9] rounded-3xl p-2 border border-slate-200/80 focus-within:bg-white focus-within:shadow-md focus-within:border-blue-400/80 transition-all flex flex-col">
           <textarea
             ref={inputRef}
