@@ -126,7 +126,7 @@ const loadSessions = async () => {
     const res = await getSessionsApi();
     sessions.value = (res as any) || [];
     if (sessions.value.length > 0 && !currentSessionId.value) {
-      selectSession(sessions.value[0].id);
+      selectSession(sessions.value[0]!.id);
     }
   } catch (err: any) {
     showToast('error', '加载会话列表失败');

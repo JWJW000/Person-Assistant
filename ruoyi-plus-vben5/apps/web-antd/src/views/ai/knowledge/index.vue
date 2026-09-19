@@ -147,6 +147,9 @@
       v-model:open="chunkModalVisible"
       title="文本切片与向量化入库"
       width="640px"
+      :z-index="1100"
+      ok-text="执行切片入库"
+      cancel-text="取消"
       @ok="handleDoChunk"
       :confirm-loading="chunking"
     >
@@ -229,20 +232,28 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
 
+import { message as antdMessage } from 'antdv-next';
+
 const message = {
   success: (msg: string) => {
-    if (typeof window !== 'undefined' && (window as any).message) {
+    if (typeof window !== 'undefined' && (window as any).message?.success) {
       (window as any).message.success(msg);
+    } else {
+      try { antdMessage.success(msg); } catch { console.log('[success]', msg); }
     }
   },
   error: (msg: string) => {
-    if (typeof window !== 'undefined' && (window as any).message) {
+    if (typeof window !== 'undefined' && (window as any).message?.error) {
       (window as any).message.error(msg);
+    } else {
+      try { antdMessage.error(msg); } catch { alert(msg); }
     }
   },
   warning: (msg: string) => {
-    if (typeof window !== 'undefined' && (window as any).message) {
+    if (typeof window !== 'undefined' && (window as any).message?.warning) {
       (window as any).message.warning(msg);
+    } else {
+      try { antdMessage.warning(msg); } catch { alert(msg); }
     }
   },
 };
@@ -435,28 +446,32 @@ function handleChunkTableChange(pag: any) {
 }
 
 async function handleDoChunk() {
-  if (!chunkFormData.content.trim()) {
-    message.warning('请输入正文文本');
+  if (!activeKb.value?.id) {
+    message.error('未绑定有效知识库，请重新打开抽屉');
     return;
   }
-  if (!activeKb.value?.id) return;
+  if (!chunkFormData.content || !chunkFormData.content.trim()) {
+    message.warning('请输入切片正文文本');
+    return;
+  }
 
   chunking.value = true;
   try {
     const res = await chunkTextApi({
       kbId: activeKb.value.id,
-      title: chunkFormData.title || '长文本片段',
-      content: chunkFormData.content,
+      title: chunkFormData.title?.trim() || '长文本片段',
+      content: chunkFormData.content.trim(),
       chunkSize: activeKb.value.chunkSize || 500,
       chunkOverlap: activeKb.value.chunkOverlap || 50,
     });
-    message.success(`切片完成！成功向量化入库 ${res.chunkCount} 个切片`);
+    message.success(`切片完成！成功向量化入库 ${res?.chunkCount ?? 0} 个切片`);
     chunkModalVisible.value = false;
     chunkFormData.title = '';
     chunkFormData.content = '';
     loadChunks();
   } catch (err: any) {
-    message.error(err.message || '切片失败');
+    console.error('切片入库失败:', err);
+    message.error(err?.msg || err?.message || '切片入库失败，请检查后端服务是否正常');
   } finally {
     chunking.value = false;
   }

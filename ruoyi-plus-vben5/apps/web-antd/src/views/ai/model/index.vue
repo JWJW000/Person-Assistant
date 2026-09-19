@@ -82,6 +82,9 @@
       v-model:open="modalVisible"
       :title="editingId ? '编辑模型配置' : '新增模型配置'"
       width="600px"
+      :z-index="1100"
+      ok-text="保存配置"
+      cancel-text="取消"
       @ok="handleSave"
       :confirm-loading="saving"
     >
@@ -138,7 +141,7 @@
         <a-form-item label="是否设为默认">
           <a-switch
             :checked="formData.isDefault === '1'"
-            @change="(val) => (formData.isDefault = val ? '1' : '0')"
+            @change="(val: any) => (formData.isDefault = val ? '1' : '0')"
           />
         </a-form-item>
       </a-form>
@@ -148,21 +151,28 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
+import { message as antdMessage } from 'antdv-next';
 
 const message = {
   success: (msg: string) => {
-    if (typeof window !== 'undefined' && (window as any).message) {
+    if (typeof window !== 'undefined' && (window as any).message?.success) {
       (window as any).message.success(msg);
+    } else {
+      try { antdMessage.success(msg); } catch { console.log('[success]', msg); }
     }
   },
   error: (msg: string) => {
-    if (typeof window !== 'undefined' && (window as any).message) {
+    if (typeof window !== 'undefined' && (window as any).message?.error) {
       (window as any).message.error(msg);
+    } else {
+      try { antdMessage.error(msg); } catch { alert(msg); }
     }
   },
   warning: (msg: string) => {
-    if (typeof window !== 'undefined' && (window as any).message) {
+    if (typeof window !== 'undefined' && (window as any).message?.warning) {
       (window as any).message.warning(msg);
+    } else {
+      try { antdMessage.warning(msg); } catch { alert(msg); }
     }
   },
 };
@@ -184,12 +194,12 @@ const pagination = reactive({
 });
 
 const columns = [
-  { title: '模型名称', key: 'name', width: 220 },
-  { title: '供应商', key: 'provider', width: 130 },
-  { title: '模型类型', key: 'modelType', width: 130 },
-  { title: 'Base URL', key: 'baseUrl' },
-  { title: '状态', key: 'status', width: 90 },
-  { title: '创建时间', dataIndex: 'createTime', width: 180 },
+  { title: '模型名称', key: 'name', dataIndex: 'name', width: 220 },
+  { title: '供应商', key: 'provider', dataIndex: 'provider', width: 130 },
+  { title: '模型类型', key: 'modelType', dataIndex: 'modelType', width: 140 },
+  { title: 'Base URL', key: 'baseUrl', dataIndex: 'baseUrl' },
+  { title: '状态', key: 'status', dataIndex: 'status', width: 90 },
+  { title: '创建时间', key: 'createTime', dataIndex: 'createTime', width: 180 },
   { title: '操作', key: 'action', width: 200 },
 ];
 
