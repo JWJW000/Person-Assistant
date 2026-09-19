@@ -7,26 +7,62 @@ export interface ConversationItem {
   updated_at: string;
 }
 
+export interface KnowledgeBaseItem {
+  id: number;
+  name: string;
+  description?: string;
+  chunkSize?: number;
+  chunkOverlap?: number;
+  isPublic?: string;
+  embeddingModelId?: number;
+}
+
 interface AppState {
   serverUrl: string;
+  accessToken: string | null;
   deviceToken: string | null;
+  currentUser: string | null;
   activeConversationId: string;
   conversations: ConversationItem[];
+  activeKbId: number | null;
+  knowledgeBases: KnowledgeBaseItem[];
+
   setServerUrl: (url: string) => void;
+  setAccessToken: (token: string | null) => void;
   setDeviceToken: (token: string | null) => void;
+  setCurrentUser: (user: string | null) => void;
   setActiveConversationId: (id: string) => void;
   setConversations: (items: ConversationItem[]) => void;
+  setActiveKbId: (kbId: number | null) => void;
+  setKnowledgeBases: (bases: KnowledgeBaseItem[]) => void;
+  logout: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  serverUrl: localStorage.getItem('server_url') || 'https://train.5wjw.cn',
+  serverUrl: localStorage.getItem('server_url') || 'https://ai.5wjw.cn',
+  accessToken: localStorage.getItem('access_token') || null,
   deviceToken: localStorage.getItem('device_token') || null,
+  currentUser: localStorage.getItem('current_user') || null,
   activeConversationId: localStorage.getItem('active_conversation_id') || 'default',
   conversations: [],
+  activeKbId: (() => {
+    const v = localStorage.getItem('active_kb_id');
+    return v && v !== 'null' ? Number(v) : null;
+  })(),
+  knowledgeBases: [],
 
   setServerUrl: (url) => {
     localStorage.setItem('server_url', url);
     set({ serverUrl: url });
+  },
+
+  setAccessToken: (token) => {
+    if (token) {
+      localStorage.setItem('access_token', token);
+    } else {
+      localStorage.removeItem('access_token');
+    }
+    set({ accessToken: token });
   },
 
   setDeviceToken: (token) => {
@@ -38,10 +74,45 @@ export const useAppStore = create<AppState>((set) => ({
     set({ deviceToken: token });
   },
 
+  setCurrentUser: (user) => {
+    if (user) {
+      localStorage.setItem('current_user', user);
+    } else {
+      localStorage.removeItem('current_user');
+    }
+    set({ currentUser: user });
+  },
+
   setActiveConversationId: (id) => {
     localStorage.setItem('active_conversation_id', id);
     set({ activeConversationId: id });
   },
 
-  setConversations: (conversations) => set({ conversations })
+  setConversations: (conversations) => set({ conversations }),
+
+  setActiveKbId: (kbId) => {
+    if (kbId !== null) {
+      localStorage.setItem('active_kb_id', String(kbId));
+    } else {
+      localStorage.removeItem('active_kb_id');
+    }
+    set({ activeKbId: kbId });
+  },
+
+  setKnowledgeBases: (bases) => set({ knowledgeBases: bases }),
+
+  logout: () => {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('device_token');
+    localStorage.removeItem('current_user');
+    localStorage.removeItem('active_kb_id');
+    set({
+      accessToken: null,
+      deviceToken: null,
+      currentUser: null,
+      activeKbId: null,
+      conversations: [],
+      knowledgeBases: [],
+    });
+  },
 }));
