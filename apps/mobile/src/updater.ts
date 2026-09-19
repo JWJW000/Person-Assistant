@@ -47,13 +47,30 @@ export async function getInstalledVersion(): Promise<InstalledVersionInfo | null
 }
 
 export async function fetchUpdateManifest(serverUrl: string): Promise<UpdateManifest | null> {
-  const res = await fetch(`${serverUrl.replace(/\/+$/, '')}/updates/latest.json?t=${Date.now()}`, {
-    cache: 'no-store'
-  });
-  if (!res.ok) return null;
-  const data = (await res.json()) as UpdateManifest;
-  if (!data || !data.version || !data.url) return null;
-  return data;
+  const cleanServer = serverUrl.replace(/\/+$/, '');
+  const candidates = [
+    `${cleanServer}/updates/latest.json?t=${Date.now()}`,
+    `https://ai.5wjw.cn/updates/latest.json?t=${Date.now()}`,
+    `https://train.5wjw.cn/updates/latest.json?t=${Date.now()}`,
+  ];
+
+  for (const u of candidates) {
+    try {
+      const res = await fetch(u, { cache: 'no-store' });
+      if (res.ok) {
+        const text = await res.text();
+        if (text.trim().startsWith('{')) {
+          const data = JSON.parse(text) as UpdateManifest;
+          if (data && data.version && data.url) {
+            return data;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('尝试拉取更新清单失败:', u, e);
+    }
+  }
+  return null;
 }
 
 function toVersionCode(value: unknown): number {
