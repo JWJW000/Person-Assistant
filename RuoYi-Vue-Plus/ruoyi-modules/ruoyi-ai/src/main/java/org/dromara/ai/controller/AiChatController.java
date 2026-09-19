@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * AI 会话与流式对话控制器 (支持 Web 和 App 客户端)
+ * AI 对话核心控制器
  *
  * @author ruoyi
  */
@@ -26,6 +26,8 @@ import java.util.Map;
 @RequestMapping("/ai/chat")
 @RequiredArgsConstructor
 public class AiChatController extends BaseController {
+
+    private final IAiChatService chatService;
 
     /**
      * 分页查询全平台会话管理列表
@@ -47,12 +49,9 @@ public class AiChatController extends BaseController {
      * 删除单条消息
      */
     @DeleteMapping("/message/{id}")
-    public R<Void> removeMessage(@PathVariable Long id) {
+    public R<Void> removeMessage(@PathVariable("id") Long id) {
         return toAjax(chatService.deleteMessageById(id));
     }
-
-
-    private final IAiChatService chatService;
 
     /**
      * 获取用户所有会话列表
@@ -76,7 +75,7 @@ public class AiChatController extends BaseController {
      * 删除会话
      */
     @DeleteMapping("/session/{sessionId}")
-    public R<Boolean> deleteSession(@PathVariable String sessionId) {
+    public R<Boolean> deleteSession(@PathVariable("sessionId") String sessionId) {
         return R.ok(chatService.deleteSession(sessionId));
     }
 
@@ -84,7 +83,7 @@ public class AiChatController extends BaseController {
      * 获取会话内的历史消息详情列表
      */
     @GetMapping("/messages/{sessionId}")
-    public R<List<AiChatMessage>> getMessages(@PathVariable String sessionId) {
+    public R<List<AiChatMessage>> getMessages(@PathVariable("sessionId") String sessionId) {
         return R.ok(chatService.getSessionMessages(sessionId));
     }
 
@@ -94,10 +93,10 @@ public class AiChatController extends BaseController {
      */
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamChatGet(
-        @RequestParam String sessionId,
-        @RequestParam String message,
-        @RequestParam(required = false) Long kbId,
-        @RequestParam(required = false) Long modelId) {
+        @RequestParam("sessionId") String sessionId,
+        @RequestParam("message") String message,
+        @RequestParam(value = "kbId", required = false) Long kbId,
+        @RequestParam(value = "modelId", required = false) Long modelId) {
         return chatService.streamChat(sessionId, message, kbId, modelId);
     }
 

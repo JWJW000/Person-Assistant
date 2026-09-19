@@ -156,9 +156,17 @@ public class AiChatServiceImpl implements IAiChatService {
         CompletableFuture.runAsync(() -> {
             StringBuilder assistantReply = new StringBuilder();
             long startTime = System.currentTimeMillis();
+            AiModelConfig config = null;
+            String mcpSummary = null;
+            String mcpTicketsJson = null;
+            String mcpFrom = null;
+            String mcpTo = null;
+            String mcpDate = null;
+            int mcpCount = 0;
+            List<AiKnowledgeChunk> ragChunks = null;
+
             try {
                 // 获取模型配置：若指定了 modelId 则优先使用，否则取默认模型
-                AiModelConfig config = null;
                 if (modelId != null && modelId > 0) {
                     config = modelConfigMapper.selectById(modelId);
                 }
@@ -176,7 +184,6 @@ public class AiChatServiceImpl implements IAiChatService {
 
                 // 检查知识库 RAG 增强
                 String promptToSend = userMessage;
-                List<AiKnowledgeChunk> ragChunks = null;
                 if (kbId != null && kbId > 0) {
                     try {
                         ragChunks = knowledgeService.searchChunks(kbId, userMessage, 3, 0.2);
@@ -199,10 +206,76 @@ public class AiChatServiceImpl implements IAiChatService {
                     }
                 }
 
+                // 12306 MCP 智能意图识别与实时查票增强
+                if (isTrainQuery(userMessage)) {
+                    try {
+                        String mcpResp = callMcpTrainQuery(userMessage);
+                        if (StringUtils.isNotBlank(mcpResp)) {
+                            cn.hutool.json.JSONObject mcpObj = cn.hutool.json.JSONUtil.parseObj(mcpResp);
+                            if (mcpObj.getBool("success", false)) {
+                                mcpFrom = mcpObj.getStr("from");
+                                mcpTo = mcpObj.getStr("to");
+                                mcpDate = mcpObj.getStr("date");
+                                mcpCount = mcpObj.getInt("count", 0);
+                                cn.hutool.json.JSONArray tickets = mcpObj.getJSONArray("tickets");
+                                if (tickets != null && !tickets.isEmpty()) {
+                                    mcpTicketsJson = tickets.toString();
+                                    StringBuilder tb = new StringBuilder();
+                                    tb.append("【已为您自动调用 12306 MCP 官方工具查询实时列车数据】:\n")
+                                      .append("出发城市: ").append(mcpFrom).append("，到达城市: ").append(mcpTo).append("，日期: ").append(mcpDate)
+                                      .append("，实时检索到共 ").append(mcpCount).append(" 趟列车。部分关键优质车次实时余票如下：\n\n");
+                                    for (int i = 0; i < Math.min(tickets.size(), 8); i++) {
+                                        cn.hutool.json.JSONObject t = tickets.getJSONObject(i);
+                                        tb.append(i + 1).append(". 车次 ").append(t.getStr("trainCode")).append(": ")
+                                          .append(t.getJSONObject("from").getStr("name")).append(" (").append(t.getStr("departureAt").substring(11, 16)).append(") -> ")
+                                          .append(t.getJSONObject("to").getStr("name")).append(" (").append(t.getStr("arrivalAt").substring(11, 16)).append(")，历时 ")
+                                          .append(t.getInt("durationMinutes") / 60).append("小时").append(t.getInt("durationMinutes") % 60).append("分");
+                                        cn.hutool.json.JSONArray seats = t.getJSONArray("seats");
+                                        if (seats != null) {
+                                            tb.append("，余票席别: [");
+                                            for (int s = 0; s < seats.size(); s++) {
+                                                cn.hutool.json.JSONObject seat = seats.getJSONObject(s);
+                                                tb.append(seat.getStr("kind")).append(": ").append(seat.getStr("rawLabel"));
+                                                if (seat.containsKey("priceMinor")) {
+                                                    tb.append("(").append(seat.getInt("priceMinor") / 100).append("元)");
+                                                }
+                                                if (s < seats.size() - 1) tb.append(", ");
+                                            }
+                                            tb.append("]");
+                                        }
+                                        tb.append("\n");
+                                    }
+                                    mcpSummary = tb.toString();
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.warn("调用 12306 MCP 查票异常: {}", e.getMessage());
+                    }
+                }
+
+                // 组装最终给大模型的 Prompt
+                if (mcpSummary != null) {
+                    StringBuilder fullPrompt = new StringBuilder();
+                    fullPrompt.append(mcpSummary).append("\n");
+                    if (ragChunks != null && !ragChunks.isEmpty()) {
+                        fullPrompt.append(promptToSend).append("\n\n");
+                    }
+                    fullPrompt.append("【用户原始问题】:\n").append(userMessage).append("\n\n")
+                              .append("【回答要求】:\n")
+                              .append("1. 明确告知用户已为您连接中国铁路 12306 MCP 官方工具，查询到了实时的车次与余票！\n")
+                              .append("2. 针对用户需求进行车次推荐（如高铁/动车优选、耗时、推荐理由等）。\n")
+                              .append("3. 严格必须在回答末尾输出完整车次的 JSON 代码块（前端将根据该 JSON 自动渲染原生火车票卡片和时刻表弹窗）：\n")
+                              .append("```json\n").append(mcpTicketsJson).append("\n```\n");
+                    promptToSend = fullPrompt.toString();
+                }
+
                 if (config == null || "YOUR_DEEPSEEK_API_KEY".equals(config.getApiKey()) || config.getApiKey() == null) {
                     // 若未配置有效云端 Key，输出友好的快速回显打字机效果并提醒配置
                     StringBuilder tipBuilder = new StringBuilder();
-                    if (ragChunks != null && !ragChunks.isEmpty()) {
+                    if (mcpSummary != null) {
+                        tipBuilder.append(mcpSummary).append("\n\n```json\n").append(mcpTicketsJson).append("\n```\n");
+                    } else if (ragChunks != null && !ragChunks.isEmpty()) {
                         tipBuilder.append("【AI 知识库 RAG 检索命中】已通过 pgvector 向量检索到 ").append(ragChunks.size()).append(" 条高相关切片：\n\n");
                         for (int i = 0; i < ragChunks.size(); i++) {
                             tipBuilder.append("➤ 知识片段 ").append(i + 1).append(" (相似度: ").append(ragChunks.get(i).getScore()).append("):\n")
@@ -217,28 +290,22 @@ public class AiChatServiceImpl implements IAiChatService {
                     String tip = tipBuilder.toString();
                     
                     for (char c : tip.toCharArray()) {
-                        emitter.send(SseEmitter.event().data(String.valueOf(c)));
+                        try {
+                            emitter.send(SseEmitter.event().data(String.valueOf(c)));
+                        } catch (Exception ignored) {
+                            break;
+                        }
                         assistantReply.append(c);
                         Thread.sleep(15);
                     }
-                    emitter.send(SseEmitter.event().name("done").data("[DONE]"));
-                    emitter.complete();
+                    try {
+                        emitter.send(SseEmitter.event().name("done").data("[DONE]"));
+                        emitter.complete();
+                    } catch (Exception ignored) {}
                 } else {
                     // 调用兼容 OpenAI 协议的流式接口 (DeepSeek / OpenAI 等)
                     callOpenAiCompatibleStream(config, promptToSend, emitter, assistantReply);
                 }
-
-                // 4. 助手回答落库
-                AiChatMessage assistantMsg = new AiChatMessage();
-                assistantMsg.setSessionId(sessionId);
-                assistantMsg.setUserId(userId);
-                assistantMsg.setRole("assistant");
-                assistantMsg.setContent(assistantReply.toString());
-                assistantMsg.setModelName(config != null ? config.getModelName() : "mock-assistant");
-                assistantMsg.setResponseTimeMs((int) (System.currentTimeMillis() - startTime));
-                assistantMsg.setStatus("success");
-                assistantMsg.setCreateTime(new Date());
-                messageMapper.insert(assistantMsg);
 
             } catch (Exception e) {
                 log.error("流式调用大模型失败", e);
@@ -247,10 +314,79 @@ public class AiChatServiceImpl implements IAiChatService {
                     emitter.completeWithError(e);
                 } catch (Exception ignored) {
                 }
+            } finally {
+                // 4. 助手回答落库 (只要有生成内容均完整落库持久化)
+                if (assistantReply.length() > 0) {
+                    try {
+                        AiChatMessage assistantMsg = new AiChatMessage();
+                        assistantMsg.setSessionId(sessionId);
+                        assistantMsg.setUserId(userId);
+                        assistantMsg.setRole("assistant");
+                        assistantMsg.setContent(assistantReply.toString());
+                        assistantMsg.setModelName(config != null ? config.getModelName() : "mock-assistant");
+                        assistantMsg.setResponseTimeMs((int) (System.currentTimeMillis() - startTime));
+                        assistantMsg.setStatus("success");
+                        assistantMsg.setCreateTime(new Date());
+                        if (mcpSummary != null) {
+                            assistantMsg.setCitations("[{\"type\":\"mcp:12306\",\"from\":\"" + mcpFrom + "\",\"to\":\"" + mcpTo + "\",\"date\":\"" + mcpDate + "\",\"count\":" + mcpCount + "}]");
+                        } else if (ragChunks != null && !ragChunks.isEmpty()) {
+                            assistantMsg.setCitations(cn.hutool.json.JSONUtil.toJsonStr(ragChunks));
+                        }
+                        messageMapper.insert(assistantMsg);
+                    } catch (Exception ex) {
+                        log.error("助手回答持久化落库失败: {}", ex.getMessage());
+                    }
+                }
             }
         });
 
         return emitter;
+    }
+
+    private boolean isTrainQuery(String msg) {
+        if (StringUtils.isBlank(msg)) return false;
+        String lower = msg.toLowerCase();
+        return lower.contains("火车") || lower.contains("高铁") || lower.contains("动车") ||
+               lower.contains("车票") || lower.contains("12306") || lower.contains("列车") ||
+               lower.contains("时刻表") || lower.contains("余票") ||
+               ((lower.contains("查票") || lower.contains("到") || lower.contains("去")) && (lower.contains("票") || lower.contains("车")));
+    }
+
+    private String callMcpTrainQuery(String userMessage) {
+        String[] targetUrls = new String[] {
+            "http://assistant-server:3000/internal/train/query",
+            "http://127.0.0.1:3000/internal/train/query",
+            "http://172.17.0.1:3000/internal/train/query"
+        };
+        for (String targetUrl : targetUrls) {
+            try {
+                URL url = new URL(targetUrl);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setConnectTimeout(4000);
+                conn.setReadTimeout(20000);
+                conn.setDoOutput(true);
+
+                String payload = String.format("{\"userMessage\":%s}", cn.hutool.json.JSONUtil.quote(userMessage));
+                try (OutputStream os = conn.getOutputStream()) {
+                    os.write(payload.getBytes(StandardCharsets.UTF_8));
+                }
+
+                if (conn.getResponseCode() == 200) {
+                    try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+                        StringBuilder sb = new StringBuilder();
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            sb.append(line);
+                        }
+                        return sb.toString();
+                    }
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return null;
     }
 
     private void callOpenAiCompatibleStream(AiModelConfig config, String message, SseEmitter emitter, StringBuilder assistantReply) throws Exception {
@@ -286,7 +422,9 @@ public class AiChatServiceImpl implements IAiChatService {
                 if (line.startsWith("data: ")) {
                     String data = line.substring(6).trim();
                     if ("[DONE]".equals(data)) {
-                        emitter.send(SseEmitter.event().name("done").data("[DONE]"));
+                        try {
+                            emitter.send(SseEmitter.event().name("done").data("[DONE]"));
+                        } catch (Exception ignored) {}
                         break;
                     }
                     try {
@@ -298,7 +436,12 @@ public class AiChatServiceImpl implements IAiChatService {
                                 String content = delta.getStr("content");
                                 if (content != null) {
                                     assistantReply.append(content);
-                                    emitter.send(SseEmitter.event().data(content));
+                                    try {
+                                        emitter.send(SseEmitter.event().data(content));
+                                    } catch (Exception sseEx) {
+                                        log.warn("SSE 客户端连接中断: {}", sseEx.getMessage());
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -307,6 +450,8 @@ public class AiChatServiceImpl implements IAiChatService {
                 }
             }
         }
-        emitter.complete();
+        try {
+            emitter.complete();
+        } catch (Exception ignored) {}
     }
 }

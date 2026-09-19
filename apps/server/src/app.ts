@@ -104,6 +104,45 @@ export function buildServer(): { app: any; db: any } {
     return { status: 'ok', time: new Date().toISOString() };
   });
 
+  // 1.1 内部 12306 实时查票与解析接口 (供 RuoYi-Vue-Plus AI 中台直接调用)
+  app.post('/internal/train/query', async (req: any, reply: any) => {
+    try {
+      const { userMessage, from, to, date } = req.body || {};
+      const currentDate = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+
+      let queryFrom = from;
+      let queryTo = to;
+      let queryDate = date;
+
+      if (!queryFrom || !queryTo) {
+        // 使用 AgentRuntime 智能解析文本中的城市与日期
+        const parsedQuery = agentRuntime.parseQueryFromText(userMessage || '', currentDate);
+        queryFrom = parsedQuery?.from?.name || '北京';
+        queryTo = parsedQuery?.to?.name || '上海';
+        queryDate = queryDate || parsedQuery?.date || currentDate;
+      }
+
+      if (!queryDate) {
+        queryDate = currentDate;
+      }
+
+      const tickets = await mcpBridge.getTickets(queryFrom, queryTo, queryDate);
+      return {
+        success: true,
+        from: queryFrom,
+        to: queryTo,
+        date: queryDate,
+        count: tickets.length,
+        tickets: tickets.slice(0, 15) // 返回前 15 趟最匹配车次
+      };
+    } catch (err: any) {
+      return reply.status(500).send({
+        success: false,
+        error: err?.message || '12306 MCP 查询失败'
+      });
+    }
+  });
+
   // 2. 配对兑换设备 Token
   app.post('/v1/auth/pair', async (req, reply) => {
     const body = PairRequestSchema.safeParse(req.body);
