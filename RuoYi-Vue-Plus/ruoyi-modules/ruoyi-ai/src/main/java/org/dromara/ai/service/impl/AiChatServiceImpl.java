@@ -141,7 +141,7 @@ public class AiChatServiceImpl implements IAiChatService {
                 List<AiKnowledgeChunk> ragChunks = null;
                 if (kbId != null && kbId > 0) {
                     try {
-                        ragChunks = knowledgeService.searchChunks(kbId, userMessage, 3, 0.3);
+                        ragChunks = knowledgeService.searchChunks(kbId, userMessage, 3, 0.2);
                         if (ragChunks != null && !ragChunks.isEmpty()) {
                             StringBuilder ctx = new StringBuilder("【参考知识库内容如下】:\n");
                             for (int i = 0; i < ragChunks.size(); i++) {
