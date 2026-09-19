@@ -17,7 +17,7 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
+    <div className="flex flex-col h-screen overflow-hidden bg-[#F2F2F7]">
       <UpdateBanner />
       {/* 视图切换 */}
       <div className="flex-1 overflow-hidden">

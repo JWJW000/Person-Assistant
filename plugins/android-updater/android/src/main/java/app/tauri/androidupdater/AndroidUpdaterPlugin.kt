@@ -50,8 +50,11 @@ class AndroidUpdaterPlugin(private val activity: Activity) : Plugin(activity) {
 
     private val executor = Executors.newSingleThreadExecutor()
 
+    // Tauri 把 JS 的 snake_case 命令转成 lowerCamelCase 再按 Kotlin 方法名查找。
+    // 同时保留下划线别名，避免旧路径漏转换。
+
     @Command
-    fun get_version_info(invoke: Invoke) {
+    fun getVersionInfo(invoke: Invoke) {
         try {
             val result = JSObject()
             result.put("versionName", currentVersionName())
@@ -65,7 +68,10 @@ class AndroidUpdaterPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     @Command
-    fun download_and_install(invoke: Invoke) {
+    fun get_version_info(invoke: Invoke) = getVersionInfo(invoke)
+
+    @Command
+    fun downloadAndInstall(invoke: Invoke) {
         val options = invoke.parseArgs(DownloadOptions::class.java)
         val url = options.url
         if (url.isEmpty()) {
@@ -121,7 +127,10 @@ class AndroidUpdaterPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     @Command
-    fun install_downloaded_apk(invoke: Invoke) {
+    fun download_and_install(invoke: Invoke) = downloadAndInstall(invoke)
+
+    @Command
+    fun installDownloadedApk(invoke: Invoke) {
         val options = invoke.parseArgs(InstallOptions::class.java)
         if (!canInstallPackages()) {
             openUnknownSourcesSettings()
@@ -145,6 +154,9 @@ class AndroidUpdaterPlugin(private val activity: Activity) : Plugin(activity) {
             invoke.reject(e.message, null, e, null)
         }
     }
+
+    @Command
+    fun install_downloaded_apk(invoke: Invoke) = installDownloadedApk(invoke)
 
     // ---------------------------------------------------------------- helpers
 

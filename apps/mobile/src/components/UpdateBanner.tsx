@@ -126,6 +126,7 @@ export const UpdateBanner: React.FC<{ autoCheck?: boolean }> = ({ autoCheck = tr
         : Sparkles;
 
   return (
+    <div className="safe-top">
     <div className={`${shell} ${tone}`}>
       <Icon className="w-4 h-4 flex-shrink-0 mt-0.5" />
       <div className="flex-1 min-w-0">
@@ -202,6 +203,7 @@ export const UpdateBanner: React.FC<{ autoCheck?: boolean }> = ({ autoCheck = tr
           <X className="w-3.5 h-3.5" />
         </button>
       )}
+    </div>
     </div>
   );
 };

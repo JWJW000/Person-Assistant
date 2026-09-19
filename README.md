@@ -1,8 +1,27 @@
-# 个人 AI 助手 (Android v0.1)
+# 个人 AI 助手 (Personal AI Assistant)
 
-基于 **Tauri 2 + React 19 + Fastify + SQLite + Pi SDK + 12306 MCP** 的个人自用火车票智能助手。
+本项目是一套完整的端到端 AI 知识库与智能助手系统，融合了移动端原生应用、RuoYi-Vue-Plus 企业级后端中枢、ruoyi-plus-vben5 管理后台以及向量知识库 (pgvector)。
+
+## 项目全景架构
+
+```
+assistant_handoff/
+├── RuoYi-Vue-Plus/       # 企业级业务中枢与 AI 引擎 (Java 21 / Spring Boot 3 / PostgreSQL 16 + pgvector)
+│   ├── ruoyi-admin/      # 系统主启动模块与环境配置
+│   └── ruoyi-modules/    # 核心业务模块 (ruoyi-ai 流式对话/知识库切片/向量检索等)
+├── ruoyi-plus-vben5/     # AI 运营与知识库管理后台 (Vue 3 / Ant Design Vue / Vben 5 Monorepo)
+│   └── apps/web-antd/    # AI 对话工作台、模型热配置与知识切片管理
+├── apps/
+│   ├── mobile/           # 移动端原生应用 (Tauri 2 + React 19 + TailwindCSS)
+│   └── server/           # 轻量级辅助业务网关与 MCP Bridge (Fastify + SQLite)
+├── packages/             # 共享跨端核心库 (contracts, core, mcp-bridge, rag-engine)
+└── AI_ASSISTANT_ROADMAP.md # AI 助手与 RAG 检索增强系统实施规划与落地路线图
+
+```
 
 ## 核心特性
+- **双端协同**: 提供 Web 运营管理端 (ruoyi-plus-vben5) 与移动端原生 App (Tauri 2 Android/iOS)。
+- **AI 业务中枢**: 基于 RuoYi-Vue-Plus + Sa-Token 统一多端鉴权，支持 SSE 打字机流式输出与双向落库。
 - **纯私有部署**: 后端与 MCP 运行在自己的服务器，手机不直连中转站，不暴露敏感密钥。
 - **iOS 风格卡片**: 浅灰底色、高对比度白色卡片、席别价格分化、跨日行程标识。
 - **安全隔离**: 彻底屏蔽 Pi 的终端执行与通用文件读写能力（`noTools: "builtin"`），仅开放受控业务工具。

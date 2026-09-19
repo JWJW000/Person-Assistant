@@ -67,6 +67,17 @@ echo "==> 版本: $VERSION (versionCode=$VERSION_CODE)"
 
 # ---------------------------------------------------------------- 构建
 
+OVERLAY="$MOBILE_DIR/src-tauri/android-overlay"
+APP_SRC="$ANDROID_DIR/app/src/main"
+if [[ -d "$OVERLAY" && -d "$APP_SRC" ]]; then
+  echo "==> 同步 Android 主题覆盖（透明状态栏）"
+  cp "$OVERLAY/MainActivity.kt" "$APP_SRC/java/com/assistant/app/MainActivity.kt"
+  mkdir -p "$APP_SRC/res/values" "$APP_SRC/res/values-night"
+  cp "$OVERLAY/res/values/colors.xml" "$APP_SRC/res/values/colors.xml"
+  cp "$OVERLAY/res/values/themes.xml" "$APP_SRC/res/values/themes.xml"
+  cp "$OVERLAY/res/values-night/themes.xml" "$APP_SRC/res/values-night/themes.xml"
+fi
+
 echo "==> 构建 APK (release, $TARGET)"
 ( cd "$MOBILE_DIR" && npx tauri android build --apk --target "$TARGET" )
 

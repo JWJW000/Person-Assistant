@@ -18,11 +18,26 @@ src-tauri/gen
 .env
 .env.*
 !.env.example
+!ruoyi-plus-vben5/**/.env.development
+!ruoyi-plus-vben5/**/.env.production
+!ruoyi-plus-vben5/**/.env
 *.sqlite
 *.sqlite-journal
 *.sqlite-wal
 *.sqlite-shm
 *.log
+*.log.gz
+
+# RuoYi & Vben specific
+.git.upstream_bak
+**/.git.upstream_bak
+.flattened-pom.xml
+application-local.yml
+application-ga.yml
+dist.zip
+*.local
+.eslintcache
+.stylelintcache
 
 # OS / editor
 .DS_Store
