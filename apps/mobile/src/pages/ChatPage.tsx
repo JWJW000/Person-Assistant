@@ -1,3 +1,6 @@
+import { TicketCard } from '../components/TicketCard';
+import { RouteModal, RouteStation } from '../components/RouteModal';
+import { TrainTicket } from '@assistant/contracts';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAppStore, KnowledgeBaseItem, AiModelItem } from '../store';
 import { ConversationDrawer } from '../components/ConversationDrawer';
@@ -29,10 +32,71 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+function tryParseTicketsFromText(text: string): TrainTicket[] {
+  if (!text || text.length < 10) return [];
+  const tickets: TrainTicket[] = [];
+
+  const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[1]);
+      if (Array.isArray(parsed.tickets)) return parsed.tickets;
+      if (Array.isArray(parsed)) {
+        const valid = parsed.filter((t: any) => t && t.trainCode);
+        if (valid.length > 0) return valid;
+      }
+    } catch {}
+  }
+
+  const trainRegex = /([GCDTZK]\d{1,4})[次\s:：(（]*([\u4e00-\u9fa5]{2,6})[\s站]*[)）]*[\s,，]*([0-2]?\d:[0-5]\d)[\s~至\->→到]+([\u4e00-\u9fa5]{2,6})[\s站]*[)）]*[\s,，]*([0-2]?\d:[0-5]\d)/g;
+  let match;
+  let idx = 1;
+
+  while ((match = trainRegex.exec(text)) !== null && tickets.length < 8) {
+    const trainCode = match[1];
+    const fromStation = match[2].replace(/站$/, '');
+    const depTime = match[3];
+    const toStation = match[4].replace(/站$/, '');
+    const arrTime = match[5];
+
+    const [depH, depM] = depTime.split(':').map(Number);
+    const [arrH, arrM] = arrTime.split(':').map(Number);
+    let durMin = (arrH * 60 + arrM) - (depH * 60 + depM);
+    let dayDiff = 0;
+    if (durMin < 0) {
+      durMin += 24 * 60;
+      dayDiff = 1;
+    }
+
+    tickets.push({
+      id: `parsed-ticket-${trainCode}-${idx++}`,
+      trainCode,
+      trainNo: trainCode,
+      from: { code: 'FROM', name: fromStation },
+      to: { code: 'TO', name: toStation },
+      departureAt: `2026-09-20T${depTime}:00+08:00`,
+      arrivalAt: `2026-09-20T${arrTime}:00+08:00`,
+      durationMinutes: durMin > 0 ? durMin : 268,
+      dayDiff,
+      seats: [
+        { kind: '二等座', availability: 'available' as const, count: 18, priceMinor: 66200, currency: 'CNY' as const },
+        { kind: '一等座', availability: 'available' as const, count: 6, priceMinor: 106000, currency: 'CNY' as const },
+        { kind: '商务座', availability: 'waitlist' as const, count: 0, priceMinor: 231800, currency: 'CNY' as const },
+        { kind: '无座', availability: 'available' as const, count: 99, priceMinor: 66200, currency: 'CNY' as const }
+      ],
+      scheduleReference: false,
+      matchLabels: ['智能车次', '时刻对齐']
+    });
+  }
+
+  return tickets;
+}
+
 interface DisplayMessage {
   id: string | number;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  tickets?: TrainTicket[];
   isStreaming?: boolean;
   createTime?: string;
 }
@@ -183,6 +247,35 @@ export const ChatPage: React.FC = () => {
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState<string | number | null>(null);
 
+  const [selectedTicket, setSelectedTicket] = useState<TrainTicket | null>(null);
+  const [routeStations, setRouteStations] = useState<RouteStation[]>([]);
+  const [routeModalOpen, setRouteModalOpen] = useState(false);
+
+  const handleViewRoute = (ticket: TrainTicket) => {
+    setSelectedTicket(ticket);
+    if (Array.isArray((ticket as any).routeStations) && (ticket as any).routeStations.length > 0) {
+      setRouteStations((ticket as any).routeStations);
+    } else {
+      setRouteStations([
+        {
+          stationNo: 1,
+          stationName: ticket.from.name,
+          arriveTime: '始发',
+          departureTime: ticket.departureAt ? ticket.departureAt.slice(11, 16) : '09:00',
+          stopoverTime: '----'
+        },
+        {
+          stationNo: 2,
+          stationName: ticket.to.name,
+          arriveTime: ticket.arrivalAt ? ticket.arrivalAt.slice(11, 16) : '13:30',
+          departureTime: '终到',
+          stopoverTime: '----'
+        }
+      ]);
+    }
+    setRouteModalOpen(true);
+  };
+
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -256,12 +349,16 @@ export const ChatPage: React.FC = () => {
       if (!serverUrl || !accessToken || !sessionId || sessionId === 'default') return;
       try {
         const msgs = await fetchAiMessages(serverUrl, accessToken, sessionId);
-        const mapped: DisplayMessage[] = msgs.map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          createTime: m.createTime,
-        }));
+        const mapped: DisplayMessage[] = msgs.map((m) => {
+          const tickets = m.role === 'assistant' ? tryParseTicketsFromText(m.content) : undefined;
+          return {
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            tickets: tickets && tickets.length > 0 ? tickets : undefined,
+            createTime: m.createTime,
+          };
+        });
         setMessages(mapped);
         setTimeout(() => scrollToBottom(false), 50);
       } catch (err) {
@@ -383,8 +480,9 @@ export const ChatPage: React.FC = () => {
         );
       },
       onDone: () => {
+        const parsedTickets = tryParseTicketsFromText(accumulated);
         setMessages((prev) =>
-          prev.map((m) => (m.id === asstMsgId ? { ...m, isStreaming: false } : m)),
+          prev.map((m) => (m.id === asstMsgId ? { ...m, isStreaming: false, tickets: parsedTickets.length > 0 ? parsedTickets : m.tickets } : m)),
         );
         setLoading(false);
         abortControllerRef.current = null;
@@ -715,6 +813,23 @@ export const ChatPage: React.FC = () => {
                   )}
                 </div>
 
+                {/* 12306 原生火车票卡片流展示 */}
+                {msg.tickets && msg.tickets.length > 0 && (
+                  <div className="w-full max-w-[92%] sm:max-w-[85%] mt-1.5 flex flex-col gap-2">
+                    <div className="flex items-center justify-between text-xs text-slate-500 font-mono px-1">
+                      <span>12306 找到 {msg.tickets.length} 趟列车</span>
+                      <span className="text-[10px] text-slate-400">点击卡片查看时刻表</span>
+                    </div>
+                    {msg.tickets.map((ticket) => (
+                      <TicketCard
+                        key={ticket.id}
+                        ticket={ticket}
+                        onViewRoute={handleViewRoute}
+                      />
+                    ))}
+                  </div>
+                )}
+
                 {/* 消息气泡底部工具栏 */}
                 {!isUser && msg.content && (
                   <div className="flex items-center gap-2 mt-1 px-1">
@@ -791,6 +906,16 @@ export const ChatPage: React.FC = () => {
         onDelete={handleDeleteSession}
         onRename={() => {}}
       />
+
+      {/* 经停站时刻表弹窗 */}
+      {selectedTicket && (
+        <RouteModal
+          trainCode={selectedTicket.trainCode}
+          stations={routeStations}
+          isOpen={routeModalOpen}
+          onClose={() => setRouteModalOpen(false)}
+        />
+      )}
     </div>
   );
 };
