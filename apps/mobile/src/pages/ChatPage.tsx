@@ -579,6 +579,18 @@ export const ChatPage: React.FC = () => {
         {messages.length === 0 ? (
           /* 空状态引导与推荐提问 */
           <div className="flex flex-col justify-center min-h-[55vh] gap-5 max-w-md mx-auto text-left py-6">
+            <div className="flex items-center gap-3">
+              <img
+                src="/app-logo.png"
+                alt="App Logo"
+                className="w-12 h-12 rounded-2xl object-cover border border-slate-200 shadow-xs"
+              />
+              <div className="flex flex-col">
+                <span className="text-sm font-bold text-slate-900">个人 AI 知识助理</span>
+                <span className="text-[10px] font-mono text-slate-400">ONLINE & READY</span>
+              </div>
+            </div>
+
             <div className="flex flex-col gap-1.5">
               <div className="inline-flex items-center gap-1.5 text-xs font-mono text-slate-400">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />

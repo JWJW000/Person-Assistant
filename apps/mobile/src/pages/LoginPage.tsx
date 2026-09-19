@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store';
 import { fetchCaptcha, loginWithRuoYi, CaptchaData } from '../lib/auth';
-import { RefreshCw, ArrowRight, User, Lock, ShieldCheck, Server, Sparkles, Terminal } from 'lucide-react';
+import { RefreshCw, ArrowRight, User, Lock, ShieldCheck, Server, Terminal } from 'lucide-react';
 
 interface LoginPageProps {
   onLoginSuccess: () => void;
@@ -79,9 +79,11 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, onSwitchTo
           {/* 头部品牌与科技 Logo */}
           <div className="flex flex-col items-center text-center gap-3">
             <div className="relative group">
-              <div className="w-13 h-13 rounded-2xl bg-slate-900 flex items-center justify-center text-white shadow-lg shadow-slate-900/15 transition-transform duration-200 group-hover:scale-105">
-                <Sparkles className="w-6 h-6 text-slate-100" />
-              </div>
+              <img
+                src="/app-logo.png"
+                alt="App Logo"
+                className="w-14 h-14 rounded-2xl shadow-md shadow-slate-900/10 object-cover border border-slate-200/80 transition-transform duration-200 group-hover:scale-105"
+              />
               <span className="absolute -bottom-1 -right-1 flex h-3.5 w-3.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border-2 border-white"></span>
