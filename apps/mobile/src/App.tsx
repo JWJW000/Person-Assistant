@@ -23,7 +23,7 @@ export const App: React.FC = () => {
           <div className="fixed bottom-6 left-0 right-0 text-center z-30">
             <button
               onClick={() => setAuthMode('login')}
-              className="text-xs text-blue-600 font-medium bg-white/80 backdrop-blur-sm px-4 py-2 rounded-full shadow-sm border border-slate-200"
+              className="text-xs text-[#757575] hover:text-[#151515] font-medium bg-white px-4 py-2 rounded-lg border border-[#EDEDED] shadow-xs"
             >
               返回账号密码登录 &rarr;
             </button>
@@ -40,47 +40,54 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-[#F2F2F7]">
+    <div className="flex flex-col h-screen overflow-hidden bg-white text-[#151515] antialiased">
       <UpdateBanner />
-      {/* 视图切换 */}
-      <div className="flex-1 overflow-hidden">
+
+      {/* 主视图区 */}
+      <main className="flex-1 overflow-hidden relative">
         {activeTab === 'chat' && <ChatPage />}
         {activeTab === 'favorites' && <FavoritesPage />}
         {activeTab === 'settings' && <SettingsPage />}
-      </div>
+      </main>
 
-      {/* iOS 原生底栏导航 TabBar */}
-      <div className="safe-bottom bg-white/95 backdrop-blur-md border-t border-slate-200/80 px-6 py-2 flex justify-around items-center z-20">
+      {/* 极简底栏导航 (ui-skills standard tabbar) */}
+      <nav className="safe-bottom bg-white border-t border-[#EDEDED] px-4 py-2 flex justify-around items-center z-20">
         <button
           onClick={() => setActiveTab('chat')}
-          className={`flex flex-col items-center gap-1 transition-colors ${
-            activeTab === 'chat' ? 'text-blue-600' : 'text-slate-400'
+          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-lg transition-colors cursor-pointer ${
+            activeTab === 'chat'
+              ? 'text-[#151515] font-medium'
+              : 'text-[#A5A5A5] hover:text-[#757575]'
           }`}
         >
           <MessageSquare className="w-5 h-5" />
-          <span className="text-[10px] font-medium">智能问答</span>
+          <span className="text-[11px]">智能对话</span>
         </button>
 
         <button
           onClick={() => setActiveTab('favorites')}
-          className={`flex flex-col items-center gap-1 transition-colors ${
-            activeTab === 'favorites' ? 'text-blue-600' : 'text-slate-400'
+          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-lg transition-colors cursor-pointer ${
+            activeTab === 'favorites'
+              ? 'text-[#151515] font-medium'
+              : 'text-[#A5A5A5] hover:text-[#757575]'
           }`}
         >
           <Bookmark className="w-5 h-5" />
-          <span className="text-[10px] font-medium">我的收藏</span>
+          <span className="text-[11px]">知识收藏</span>
         </button>
 
         <button
           onClick={() => setActiveTab('settings')}
-          className={`flex flex-col items-center gap-1 transition-colors ${
-            activeTab === 'settings' ? 'text-blue-600' : 'text-slate-400'
+          className={`flex flex-col items-center gap-1 py-1 px-3 rounded-lg transition-colors cursor-pointer ${
+            activeTab === 'settings'
+              ? 'text-[#151515] font-medium'
+              : 'text-[#A5A5A5] hover:text-[#757575]'
           }`}
         >
           <Settings className="w-5 h-5" />
-          <span className="text-[10px] font-medium">系统设置</span>
+          <span className="text-[11px]">系统设置</span>
         </button>
-      </div>
+      </nav>
     </div>
   );
 };
