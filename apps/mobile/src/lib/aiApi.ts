@@ -1,3 +1,12 @@
+import { useAppStore } from '../store';
+
+function handle401Unauthorized() {
+  const store = useAppStore.getState();
+  if (store.accessToken) {
+    console.warn('Sa-Token 鉴权凭证已失效 (HTTP 401)，自动触发重新登录');
+    store.setAccessToken(null);
+  }
+}
 import { CLIENT_ID } from './auth';
 import { KnowledgeBaseItem, AiModelItem } from '../store';
 
@@ -148,7 +157,15 @@ export async function fetchAiSessions(serverUrl: string, token?: string | null):
     const res = await fetch(url, {
       headers: getHeaders(token),
     });
+    if (res.status === 401) {
+      handle401Unauthorized();
+      return [];
+    }
     const json = await res.json();
+    if (json.code === 401) {
+      handle401Unauthorized();
+      return [];
+    }
     if (json.code === 200 && Array.isArray(json.data)) {
       return json.data;
     }
@@ -190,7 +207,15 @@ export async function fetchAiMessages(serverUrl: string, token: string | null, s
     const res = await fetch(url, {
       headers: getHeaders(token),
     });
+    if (res.status === 401) {
+      handle401Unauthorized();
+      return [];
+    }
     const json = await res.json();
+    if (json.code === 401) {
+      handle401Unauthorized();
+      return [];
+    }
     if (json.code === 200 && Array.isArray(json.data)) {
       return json.data;
     }
