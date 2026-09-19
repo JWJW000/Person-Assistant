@@ -44,11 +44,17 @@ export const App: React.FC = () => {
     <div className="flex flex-col h-screen overflow-hidden bg-[#F8FAFC] text-slate-900 antialiased selection:bg-slate-900 selection:text-white">
       <UpdateBanner />
 
-      {/* 主视图区 */}
+      {/* 主视图区 (Tab 内存保活架构：切换 Tab 仅切换 display 状态，绝不销毁重载组件，彻底杜绝内容闪烁) */}
       <main className="flex-1 overflow-hidden relative">
-        {activeTab === 'chat' && <ChatPage />}
-        {activeTab === 'knowledge' && <KnowledgePage />}
-        {activeTab === 'settings' && <SettingsPage />}
+        <div className={`h-full w-full ${activeTab === 'chat' ? 'block' : 'hidden'}`}>
+          <ChatPage />
+        </div>
+        <div className={`h-full w-full ${activeTab === 'knowledge' ? 'block' : 'hidden'}`}>
+          <KnowledgePage />
+        </div>
+        <div className={`h-full w-full ${activeTab === 'settings' ? 'block' : 'hidden'}`}>
+          <SettingsPage />
+        </div>
       </main>
 
       {/* 现代悬浮胶囊底栏 (Floating Island Dock) */}

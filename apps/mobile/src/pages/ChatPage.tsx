@@ -198,13 +198,13 @@ export const ChatPage: React.FC = () => {
     }
   };
 
-  // 1. 获取模型列表 (绝不为空)
+  // 1. 获取模型列表 (绝不为空，稳定依赖)
   const loadModels = useCallback(async () => {
     try {
       const models = await fetchChatModels(serverUrl, accessToken);
       if (models && models.length > 0) {
         setChatModels(models);
-        if (activeModelId === null) {
+        if (useAppStore.getState().activeModelId === null) {
           const def = models.find((m) => m.isDefault === '1') || models[0];
           setActiveModelId(def.id);
         }
@@ -212,22 +212,22 @@ export const ChatPage: React.FC = () => {
     } catch (err) {
       console.warn('加载模型列表失败:', err);
     }
-  }, [serverUrl, accessToken, activeModelId, setActiveModelId, setChatModels]);
+  }, [serverUrl, accessToken, setActiveModelId, setChatModels]);
 
-  // 2. 获取知识库列表 (绝不为空)
+  // 2. 获取知识库列表 (绝不为空，稳定依赖)
   const loadKnowledgeBases = useCallback(async () => {
     try {
       const bases = await fetchKnowledgeBases(serverUrl, accessToken);
       if (bases && bases.length > 0) {
         setKnowledgeBases(bases);
-        if (activeKbId === null) {
+        if (useAppStore.getState().activeKbId === null) {
           setActiveKbId(bases[0].id);
         }
       }
     } catch (err) {
       console.warn('加载知识库失败:', err);
     }
-  }, [serverUrl, accessToken, activeKbId, setActiveKbId, setKnowledgeBases]);
+  }, [serverUrl, accessToken, setActiveKbId, setKnowledgeBases]);
 
   // 3. 获取会话列表
   const loadSessions = useCallback(async () => {
