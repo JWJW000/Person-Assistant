@@ -11,6 +11,27 @@ export const App: React.FC = () => {
   const { accessToken } = useAppStore();
   const [authMode, setAuthMode] = useState<'login' | 'pair'>('login');
   const [activeOverlay, setActiveOverlay] = useState<'none' | 'knowledge' | 'settings'>('none');
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
+
+  // 所有 Hook 必须严格声明在组件顶部，绝不可放在任何条件返回之后（避免 React "Rendered fewer hooks" 白屏崩溃）
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.visualViewport) {
+        setViewportHeight(window.visualViewport.height);
+        window.scrollTo(0, 0);
+      }
+    };
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleResize);
+      window.visualViewport.addEventListener('scroll', handleResize);
+      handleResize();
+      return () => {
+        window.visualViewport?.removeEventListener('resize', handleResize);
+        window.visualViewport?.removeEventListener('scroll', handleResize);
+      };
+    }
+  }, []);
 
   // 严格要求：进入应用前必须先完成系统账号登录
   const isAuthenticated = Boolean(accessToken);
@@ -39,30 +60,9 @@ export const App: React.FC = () => {
     );
   }
 
-  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
-
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.visualViewport) {
-        setViewportHeight(window.visualViewport.height);
-        window.scrollTo(0, 0);
-      }
-    };
-
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener("resize", handleResize);
-      window.visualViewport.addEventListener("scroll", handleResize);
-      handleResize();
-      return () => {
-        window.visualViewport?.removeEventListener("resize", handleResize);
-        window.visualViewport?.removeEventListener("scroll", handleResize);
-      };
-    }
-  }, []);
-
   return (
     <div
-      style={{ height: viewportHeight ? `${viewportHeight}px` : "100dvh" }}
+      style={{ height: viewportHeight ? `${viewportHeight}px` : '100dvh' }}
       className="fixed inset-x-0 top-0 flex flex-col overflow-hidden bg-white text-slate-900 antialiased selection:bg-slate-900 selection:text-white"
     >
       <UpdateBanner />
