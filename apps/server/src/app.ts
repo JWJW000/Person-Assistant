@@ -114,11 +114,27 @@ export function buildServer(): { app: any; db: any } {
       let queryTo = to;
       let queryDate = date;
 
-      if (!queryFrom || !queryTo) {
-        // 使用 AgentRuntime 智能解析文本中的城市与日期
+      // 1. 全面优先由大模型进行自然语言意图理解与参数抽取 (LLM 提取)
+      if (!queryFrom || !queryTo || !queryDate) {
+        if (userMessage && userMessage.trim()) {
+          try {
+            const llmExtracted = await agentRuntime.extractQueryWithLlm(userMessage, currentDate);
+            if (llmExtracted) {
+              queryFrom = queryFrom || llmExtracted.from;
+              queryTo = queryTo || llmExtracted.to;
+              queryDate = queryDate || llmExtracted.date;
+            }
+          } catch (e) {
+            console.warn("大模型参数抽取异常:", e);
+          }
+        }
+      }
+
+      // 2. 本地规则快速兜底
+      if (!queryFrom || !queryTo || !queryDate) {
         const parsedQuery = agentRuntime.parseQueryFromText(userMessage || '', currentDate);
-        queryFrom = parsedQuery?.from?.name || '北京';
-        queryTo = parsedQuery?.to?.name || '上海';
+        queryFrom = queryFrom || parsedQuery?.from?.name || '北京';
+        queryTo = queryTo || parsedQuery?.to?.name || '上海';
         queryDate = queryDate || parsedQuery?.date || currentDate;
       }
 
@@ -128,7 +144,7 @@ export function buildServer(): { app: any; db: any } {
 
       
       // 深度清洗站名，去除意外带入的动词、连词及修饰后缀 (如 "上海的高铁车次与" -> "上海")
-      const cleanStation = (name) =>
+      const cleanStation = (name: string) =>
         String(name || "")
           .replace(/(?:的|高铁|动车|火车|列车|车次|车票|余票|票价|班次|时刻|与|和|及).*$/, "")
           .replace(/^[号日从去坐乘坐到至在]+/, "")

@@ -673,6 +673,55 @@ JSON 结构规范：
     return s.trim();
   }
 
+
+  /**
+   * 全部由大模型进行实体与出行参数抽取 (LLM NER)
+   */
+  public async extractQueryWithLlm(
+    userMessage: string,
+    currentDate: string
+  ): Promise<{ from: string; to: string; date: string } | null> {
+    const cfg = await this.resolveConfig();
+    const llm = cfg.enabled ? this.buildClient(cfg) : null;
+    if (!llm) return null;
+
+    const prompt = `你是一个专业的 12306 铁路出行参数抽取引擎。
+根据用户的提问和今天基准日期，提取出发地、目的地与出行日期。
+【今天基准日期】: ${currentDate}
+【用户提问】: ${userMessage}
+
+规则要求：
+1. 精确推算具体出行日期（如“明天”、“后天”、“30号”、“下周一”等，以今天基准日期精确换算为 YYYY-MM-DD）。
+2. 精确识别标准城市名或车站名（如“北京”、“洛阳”、“上海”、“深圳北”，切勿带有“市/站/车票/去/到/有票吗”等任何多余字词）。
+
+只输出以下合法的 JSON 格式，切勿输出多余解释或文字：
+{
+  "from": "出发城市或车站名",
+  "to": "到达城市或车站名",
+  "date": "YYYY-MM-DD"
+}`;
+
+    try {
+      const resp = await llm.chat([{ role: "user", content: prompt }], { temperature: 0 });
+      const parsed = LlmClient.extractJson<{ from?: string; to?: string; date?: string }>(resp);
+      if (parsed && parsed.from && parsed.to && parsed.date) {
+        const clean = (s: string) =>
+          String(s || "")
+            .replace(/^[号日从去坐乘坐到至在]+/, "")
+            .replace(/[有票吗呢吧了站市县区]+$/, "")
+            .trim();
+        return {
+          from: clean(parsed.from),
+          to: clean(parsed.to),
+          date: parsed.date.trim()
+        };
+      }
+    } catch (err) {
+      console.warn("LLM 参数抽取失败:", err);
+    }
+    return null;
+  }
+
   public parseQueryFromText(text: string, defaultDate: string, base?: TicketQuery): TicketQuery {
     let date = defaultDate;
     const dateMatch = text.match(/(\d{4})[年\-](\d{1,2})[月\-](\d{1,2})日?/);
