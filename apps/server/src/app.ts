@@ -131,8 +131,8 @@ export function buildServer(): { app: any; db: any } {
       const cleanStation = (name) =>
         String(name || "")
           .replace(/(?:的|高铁|动车|火车|列车|车次|车票|余票|票价|班次|时刻|与|和|及).*$/, "")
-          .replace(/^[从去坐乘坐到至]+/, "")
-          .replace(/[站市县区]$/, "")
+          .replace(/^[号日从去坐乘坐到至在]+/, "")
+          .replace(/[有票吗呢吧了站市县区]+$/, "")
           .trim();
       queryFrom = cleanStation(queryFrom) || "北京";
       queryTo = cleanStation(queryTo) || "上海";

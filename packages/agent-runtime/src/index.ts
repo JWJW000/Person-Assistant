@@ -655,10 +655,10 @@ JSON 结构规范：
   }
 
   // 站名前后常见的意图词/修饰词，需要剔除后再交给 12306 解析
-  private static readonly LEAD_WORDS = /^(?:帮我|帮忙|我想|我要|我|麻烦|请问|请|查一下|查一查|查询|查|看看|看一下|看|来|想|要|从|坐|乘坐|去|出)+/;
-  private static readonly TAIL_WORDS = /(?:的高铁|的高客|的动车|的火车|的汽车|的飞机|高铁|动车|火车|汽车|飞机|车票|车次|列车|班次|机票|有票|没票|无票|的|票|站|市|吗|呢|吧|啊|呀|了|，|,|。|？|\?|！|!|\s)+$/;
-  // 时间/日期修饰词，若不清除会被贪心匹配并入站名
-  private static readonly TIME_WORDS = /(?:\d{4}[年\-\/.]\d{1,2}[月\-\/.]\d{1,2}[日号]?|\d{1,2}[月\-\/.]\d{1,2}[日号]?|\d{1,2}[日号]|\d{1,2}[点时](?:\d{1,2}分?)?|\d{1,3}天后|一个?月后|1个?月后|下个月|大后天|后天|明天|明日|今天|今日|昨天|昨日|周[一二三四五六日天]|这周|下周|周末|上午|中午|下午|晚上|早上|凌晨|清晨|傍晚|白天)/g;
+  private static readonly LEAD_WORDS = /^(?:帮我|帮忙|我想|我要|我|麻烦|请问|请|查一下|查一查|查询|查|看看|看一下|看|来|想|要|从|坐|乘坐|去|出|在|号|日|问一下|问问)+/;
+  private static readonly TAIL_WORDS = /(?:的高铁|的高客|的动车|的火车|的汽车|的飞机|高铁|动车|火车|汽车|飞机|车票|车次|列车|班次|机票|有余票|有没有票|还有票|有票|没票|无票|余票|票价|时刻表|时刻|车|票|有|站|市|县|区|吗|呢|吧|啊|呀|了|与|及|和|，|,|。|？|\?|！|!|\s)+$/;
+  // 时间/日期修饰词 (支持空格分隔如 "30 号")
+  private static readonly TIME_WORDS = /(?:\d{4}[年\-\/.]\s*\d{1,2}[月\-\/.]\s*\d{1,2}[日号]?|\d{1,2}[月\-\/.]\s*\d{1,2}[日号]?|\d{1,2}\s*[日号]|\d{1,2}[点时](?:\d{1,2}分?)?|\d{1,3}天后|一个?月后|1个?月后|下个月|大后天|后天|明天|明日|今天|今日|昨天|昨日|周[一二三四五六日天]|这周|下周|周末|上午|中午|下午|晚上|早上|凌晨|清晨|傍晚|白天)/g;
 
   public static cleanStationName(raw: string): string {
     let s = raw.trim();
@@ -668,8 +668,8 @@ JSON 结构规范：
       s = s.replace(AgentRuntime.LEAD_WORDS, '').replace(AgentRuntime.TAIL_WORDS, '');
     }
     s = s.replace(/(?:的|高铁|动车|火车|列车|车次|车票|余票|票价|班次|时刻|与|和|及).*$/, "")
-         .replace(/^[从去坐乘坐到至]+/, "")
-         .replace(/[站市县区]$/, "");
+         .replace(/^[号日从去坐乘坐到至在]+/, "")
+         .replace(/[有票吗呢吧了站市县区]+$/, "");
     return s.trim();
   }
 
@@ -712,16 +712,16 @@ JSON 结构规范：
     let fromName = base?.from.name || '北京';
     let toName = base?.to.name || '上海';
 
-    // 用于站名解析的归一化文本：去掉空白、标点与时间修饰词
-    const routeText = text
-      .replace(AgentRuntime.TIME_WORDS, '')
-      .replace(/\s+/g, '')
-      .replace(/[，,。.；;！!？?、：:（）()【】\[\]"'“”]/g, '');
+    // 用于站名解析的归一化文本：先去除空格标点，再精准剔除时间词
+    const compact = text.replace(/\s+/g, '').replace(/[，,。.；;！!？?、：:（）()【】\[\]"'“”]/g, '');
+    const routeText = compact.replace(AgentRuntime.TIME_WORDS, '');
 
-    // 匹配 "从X到Y" / "X到Y" / "X去Y"，优先以 "从" 作为锚点
+    // 匹配 "从X到Y" / "X到Y" / "X去Y"
     const routeMatch =
-      routeText.match(/从([\u4e00-\u9fa5]{2,8}?)(?:到|至|去)([\u4e00-\u9fa5]{2,8})/) ||
-      routeText.match(/([\u4e00-\u9fa5]{2,8}?)(?:到|至|去)([\u4e00-\u9fa5]{2,8})/);
+      routeText.match(/从([\u4e00-\u9fa5]{2,6}?)(?:到|至|去)([\u4e00-\u9fa5]{2,6}?)(?:的|高铁|动车|火车|列车|车次|车票|票|班次|时刻|有票|余票|票价|查票|查询|查|与|和|及|$)/) ||
+      routeText.match(/([\u4e00-\u9fa5]{2,6}?)(?:到|至|去)([\u4e00-\u9fa5]{2,6}?)(?:的|高铁|动车|火车|列车|车次|车票|票|班次|时刻|有票|余票|票价|查票|查询|查|与|和|及|$)/) ||
+      routeText.match(/从([\u4e00-\u9fa5]{2,6}?)(?:到|至|去)([\u4e00-\u9fa5]{2,6})/) ||
+      routeText.match(/([\u4e00-\u9fa5]{2,6}?)(?:到|至|去)([\u4e00-\u9fa5]{2,6})/);
     if (routeMatch) {
       const cleanedFrom = AgentRuntime.cleanStationName(routeMatch[1]);
       const cleanedTo = AgentRuntime.cleanStationName(routeMatch[2]);
