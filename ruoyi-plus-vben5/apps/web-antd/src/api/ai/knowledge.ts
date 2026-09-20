@@ -31,6 +31,8 @@ export interface KnowledgeChunk {
   kbId: number;
   docId: number;
   chunkOrder: number;
+  chunkType?: 'qa' | 'text' | string;
+  question?: string;
   content: string;
   tokenCount?: number;
   score?: number;
@@ -45,6 +47,8 @@ export interface ChunkTextParams {
   content: string;
   chunkSize?: number;
   chunkOverlap?: number;
+  chunkType?: 'qa' | 'text';
+  question?: string;
 }
 
 export interface SearchChunkParams {
