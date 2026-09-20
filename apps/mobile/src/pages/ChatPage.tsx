@@ -172,6 +172,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
     setActiveModelId,
     chatModels,
     setChatModels,
+    logout,
   } = useAppStore();
 
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
@@ -401,7 +402,16 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
         setActiveConversationId(targetSessionId);
         loadSessions();
       } catch (err: any) {
-        alert(err.message || '创建会话失败');
+        if (
+          err.message?.includes('登录') ||
+          err.message?.includes('401') ||
+          err.message?.includes('token') ||
+          err.message?.includes('权限')
+        ) {
+          logout();
+          return;
+        }
+        console.warn('创建会话失败:', err);
         return;
       }
     }
@@ -461,6 +471,14 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
       onError: (err: any) => {
         setLoading(false);
         abortControllerRef.current = null;
+        if (
+          String(err?.message || err).includes('401') ||
+          String(err?.message || err).includes('登录') ||
+          String(err?.message || err).includes('token')
+        ) {
+          logout();
+          return;
+        }
         console.warn("生成出错:", err);
       },
       onDone: () => {

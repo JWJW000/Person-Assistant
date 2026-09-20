@@ -1,11 +1,9 @@
 import { useAppStore } from '../store';
 
-function handle401Unauthorized() {
+export function handle401Unauthorized() {
   const store = useAppStore.getState();
-  if (store.accessToken) {
-    console.warn('Sa-Token 鉴权凭证已失效 (HTTP 401)，自动触发重新登录');
-    store.setAccessToken(null);
-  }
+  console.warn('Sa-Token 鉴权凭证已失效 (HTTP 401)，自动清除凭证并跳回登录页');
+  store.logout();
 }
 import { CLIENT_ID } from './auth';
 import { KnowledgeBaseItem, AiModelItem } from '../store';
@@ -178,11 +176,8 @@ export async function fetchAiSessions(serverUrl: string, token?: string | null):
  */
 export async function createAiSession(serverUrl: string, token: string | null, title?: string): Promise<AiSessionItem> {
   if (!token) {
-    // 离线/临时会话
-    return {
-      id: `local-${Date.now()}`,
-      title: title || '新对话',
-    };
+    handle401Unauthorized();
+    throw new Error('登录凭据已失效，正在返回登录页');
   }
   const url = `${getBaseUrl(serverUrl)}/ai/chat/session/create`;
   const res = await fetch(url, {
@@ -190,7 +185,21 @@ export async function createAiSession(serverUrl: string, token: string | null, t
     headers: getHeaders(token),
     body: JSON.stringify({ title: title || '新对话' }),
   });
-  const json = await res.json();
+  if (res.status === 401) {
+    handle401Unauthorized();
+    throw new Error('登录凭据已失效，正在返回登录页');
+  }
+  const json = await res.json().catch(() => ({}));
+  if (
+    json.code === 401 ||
+    json.msg?.includes('登录') ||
+    json.msg?.includes('token 无效') ||
+    json.msg?.includes('未登录') ||
+    json.msg?.includes('权限')
+  ) {
+    handle401Unauthorized();
+    throw new Error('登录凭据已失效，正在返回登录页');
+  }
   if (json.code === 200 && json.data) {
     return json.data;
   }
@@ -276,7 +285,15 @@ export async function streamAiChat(options: StreamChatOptions): Promise<void> {
     });
 
     if (!res.ok) {
-      const errText = await res.text();
+      if (res.status === 401) {
+        handle401Unauthorized();
+        throw new Error('登录凭据已失效，正在返回登录页');
+      }
+      const errText = await res.text().catch(() => '');
+      if (errText.includes('401') || errText.includes('登录') || errText.includes('token')) {
+        handle401Unauthorized();
+        throw new Error('登录凭据已失效，正在返回登录页');
+      }
       throw new Error(`服务响应异常 (${res.status}): ${errText}`);
     }
 
