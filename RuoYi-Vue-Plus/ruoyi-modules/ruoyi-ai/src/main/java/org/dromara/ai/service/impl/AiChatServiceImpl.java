@@ -191,12 +191,12 @@ public class AiChatServiceImpl implements IAiChatService {
                     try {
                         ragChunks = knowledgeService.searchChunks(kbId, userMessage, 3, 0.2);
                         if (ragChunks != null && !ragChunks.isEmpty()) {
-                            StringBuilder ctx = new StringBuilder("【参考知识库内容如下】:\n");
+                            StringBuilder ctx = new StringBuilder("【已知背景信息与记忆事实】:\n");
                             for (int i = 0; i < ragChunks.size(); i++) {
                                 AiKnowledgeChunk rc = ragChunks.get(i);
                                 ctx.append(i + 1).append(". ");
                                 if ("qa".equalsIgnoreCase(rc.getChunkType()) && rc.getQuestion() != null) {
-                                    ctx.append("[标准问答] 问题: ").append(rc.getQuestion()).append(" => 答案: ").append(rc.getContent()).append("\n\n");
+                                    ctx.append("记忆问答: ").append(rc.getQuestion()).append(" => ").append(rc.getContent()).append("\n\n");
                                 } else {
                                     ctx.append(rc.getContent()).append("\n\n");
                                 }
@@ -215,12 +215,14 @@ public class AiChatServiceImpl implements IAiChatService {
                             } catch (Exception ignored) {}
 
                             if (StringUtils.isNotBlank(ragCustomPrompt)) {
-                                ctx.append("【指令要求】:\n").append(ragCustomPrompt).append("\n\n");
+                                ctx.append("【角色定位与系统要求】:\n").append(ragCustomPrompt).append("\n\n");
                             } else {
-                                ctx.append("【指令要求】:\n请结合上述参考知识库内容，准确简练回答用户问题。\n\n");
+                                ctx.append("【回答核心要求】:\n")
+                                   .append("1. 你是用户的贴心私人专属助理，请直接、自然地回答用户，就像你本身就熟知这些事实一样。\n")
+                                   .append("2. 绝对严禁出现“根据知识库”、“根据参考内容”、“根据记录”、“文档中显示”等生硬机械的字眼！直接给出自然答案即可。\n\n");
                             }
 
-                            ctx.append("【用户问题】:\n").append(userMessage);
+                            ctx.append("【特别提醒】：请直接作答，严禁出现“根据知识库”、“根据记录”等字眼！\n\n").append("【用户问题】:\n").append(userMessage);
                             promptToSend = ctx.toString();
                         }
                     } catch (Exception e) {
