@@ -40,7 +40,7 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-white text-slate-900 antialiased selection:bg-slate-900 selection:text-white">
+    <div className="fixed inset-0 flex flex-col h-[100dvh] overflow-hidden bg-white text-slate-900 antialiased selection:bg-slate-900 selection:text-white">
       <UpdateBanner />
 
       {/* 主视图区：ChatGPT 全沉浸式架构 */}

@@ -17,7 +17,12 @@
   body,
   #root {
     height: 100%;
-    background-color: #F8FAFC;
+    width: 100%;
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+    background-color: #FFFFFF;
     color: #0F172A;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
