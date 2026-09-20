@@ -8,6 +8,8 @@ import org.dromara.ai.domain.entity.AiKnowledgeChunk;
 import org.dromara.ai.domain.entity.AiChatMessage;
 import org.dromara.ai.domain.entity.AiChatSession;
 import org.dromara.ai.domain.entity.AiModelConfig;
+import org.dromara.ai.domain.entity.AiPrompt;
+import org.dromara.ai.mapper.AiPromptMapper;
 import org.dromara.ai.mapper.AiChatMessageMapper;
 import org.dromara.ai.mapper.AiChatSessionMapper;
 import org.dromara.ai.mapper.AiModelConfigMapper;
@@ -77,6 +79,7 @@ public class AiChatServiceImpl implements IAiChatService {
     private final AiChatMessageMapper messageMapper;
     private final AiModelConfigMapper modelConfigMapper;
     private final IAiKnowledgeService knowledgeService;
+    private final AiPromptMapper promptMapper;
 
     @Override
     public List<AiChatSession> getUserSessions() {
@@ -198,7 +201,26 @@ public class AiChatServiceImpl implements IAiChatService {
                                     ctx.append(rc.getContent()).append("\n\n");
                                 }
                             }
-                            ctx.append("【用户问题】:\n").append(userMessage).append("\n\n请结合上述参考知识库内容，准确回答用户问题。");
+                            String ragCustomPrompt = null;
+                            try {
+                                if (promptMapper != null) {
+                                    AiPrompt p = promptMapper.selectOne(new LambdaQueryWrapper<AiPrompt>()
+                                        .eq(AiPrompt::getAct, "rag_qa")
+                                        .eq(AiPrompt::getStatus, "0")
+                                        .last("LIMIT 1"));
+                                    if (p != null && StringUtils.isNotBlank(p.getContent())) {
+                                        ragCustomPrompt = p.getContent().trim();
+                                    }
+                                }
+                            } catch (Exception ignored) {}
+
+                            if (StringUtils.isNotBlank(ragCustomPrompt)) {
+                                ctx.append("【指令要求】:\n").append(ragCustomPrompt).append("\n\n");
+                            } else {
+                                ctx.append("【指令要求】:\n请结合上述参考知识库内容，准确简练回答用户问题。\n\n");
+                            }
+
+                            ctx.append("【用户问题】:\n").append(userMessage);
                             promptToSend = ctx.toString();
                         }
                     } catch (Exception e) {
@@ -259,15 +281,37 @@ public class AiChatServiceImpl implements IAiChatService {
                     }
                 }
 
-                // 组装最终给大模型的 Prompt (极简精辟，车票数据由原生卡片承载)
+                // 组装最终给大模型的 Prompt (优先动态读取「提示词管理」中已配置的 travel_expert 模板)
                 if (mcpSummary != null) {
                     StringBuilder fullPrompt = new StringBuilder();
                     fullPrompt.append(mcpSummary).append("\n");
+
+                    String travelCustomPrompt = null;
+                    try {
+                        if (promptMapper != null) {
+                            AiPrompt p = promptMapper.selectOne(new LambdaQueryWrapper<AiPrompt>()
+                                .eq(AiPrompt::getAct, "travel_expert")
+                                .eq(AiPrompt::getStatus, "0")
+                                .last("LIMIT 1"));
+                            if (p != null && StringUtils.isNotBlank(p.getContent())) {
+                                travelCustomPrompt = p.getContent().trim();
+                            }
+                        }
+                    } catch (Exception ex) {
+                        log.warn("读取 12306 出行提示词配置异常: {}", ex.getMessage());
+                    }
+
+                    if (StringUtils.isNotBlank(travelCustomPrompt)) {
+                        fullPrompt.append("【系统角色与指导要求 (提示词管理配置)】:\n").append(travelCustomPrompt).append("\n\n");
+                    } else {
+                        fullPrompt.append("【回答核心要求】:\n")
+                                  .append("1. 回复必须精炼克制，总字数严格控制在 50~80 字以内，切忌寒暄套话或繁杂逐趟罗列！\n")
+                                  .append("2. 仅用一两句话精简点评推荐的 2~3 趟核心车次（如耗时最短车次、优选早晚车），具体各席别票价经停已由下方卡片完美展示，无需在正文重复列出。\n\n");
+                    }
+
                     fullPrompt.append("【用户原始问题】:\n").append(userMessage).append("\n\n")
-                              .append("【回答核心要求】:\n")
-                              .append("1. 回复必须精炼克制，总字数严格控制在 50~80 字以内，切忌寒暄套话或繁杂逐趟罗列！\n")
-                              .append("2. 仅用一两句话精简点评推荐的 2~3 趟核心车次（如耗时最短车次、优选早晚车），具体各席别票价经停已由下方卡片完美展示，无需在正文重复列出。\n")
-                              .append("3. 严格在回答最末尾输出车次 JSON 代码块供前端卡片引擎提取：\n")
+                              .append("【卡片数据输出约定】:\n")
+                              .append("严格在回答最末尾输出车次 JSON 代码块供前端卡片引擎提取展示：\n")
                               .append("```json\n").append(mcpTicketsJson).append("\n```\n");
                     promptToSend = fullPrompt.toString();
                 }
