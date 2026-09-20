@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppStore } from './store';
 import { LoginPage } from './pages/LoginPage';
 import { PairingPage } from './pages/PairingPage';
@@ -39,8 +39,32 @@ export const App: React.FC = () => {
     );
   }
 
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.visualViewport) {
+        setViewportHeight(window.visualViewport.height);
+        window.scrollTo(0, 0);
+      }
+    };
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", handleResize);
+      window.visualViewport.addEventListener("scroll", handleResize);
+      handleResize();
+      return () => {
+        window.visualViewport?.removeEventListener("resize", handleResize);
+        window.visualViewport?.removeEventListener("scroll", handleResize);
+      };
+    }
+  }, []);
+
   return (
-    <div className="fixed inset-0 flex flex-col h-[100dvh] overflow-hidden bg-white text-slate-900 antialiased selection:bg-slate-900 selection:text-white">
+    <div
+      style={{ height: viewportHeight ? `${viewportHeight}px` : "100dvh" }}
+      className="fixed inset-x-0 top-0 flex flex-col overflow-hidden bg-white text-slate-900 antialiased selection:bg-slate-900 selection:text-white"
+    >
       <UpdateBanner />
 
       {/* 主视图区：ChatGPT 全沉浸式架构 */}

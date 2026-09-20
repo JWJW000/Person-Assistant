@@ -512,7 +512,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
       </header>
 
       {/* 消息流区域 (ChatGPT 纯粹无边框直出排版) */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6 pb-28">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-5">
         {messages.length === 0 ? (
           /* ChatGPT 极简居中欢迎状态 */
           <div className="flex flex-col items-center justify-center min-h-[62vh] max-w-sm mx-auto text-center px-2 animate-in fade-in duration-300">
@@ -716,9 +716,9 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
         <div ref={messagesEndRef} />
       </div>
 
-      {/* ChatGPT 标志性底部输入岛 (Input Island) */}
-      <div className="fixed bottom-3 inset-x-0 px-3 z-30 pointer-events-none safe-bottom">
-        <div className="pointer-events-auto max-w-lg mx-auto bg-[#F4F4F4] rounded-[28px] p-1.5 pl-2 flex items-end gap-1.5 border border-black/[0.04] shadow-[0_4px_24px_rgba(0,0,0,0.06)]">
+      {/* ChatGPT 标志性底部输入岛 (自然融入文档流底部，软键盘弹起时平滑贴合在键盘上方，绝不导致顶栏上移) */}
+      <div className="shrink-0 px-3 pt-1 pb-2 safe-bottom bg-white z-20">
+        <div className="max-w-lg mx-auto bg-[#F4F4F4] rounded-[28px] p-1.5 pl-2 flex items-end gap-1.5 border border-black/[0.04] shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
           {/* 左侧：+ 工具展开按键 */}
           <button
             type="button"
