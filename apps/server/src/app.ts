@@ -3,7 +3,7 @@ import cors from '@fastify/cors';
 import { createDatabase, migrate } from './db/index.js';
 import { McpBridge } from '@assistant/mcp-bridge';
 import { TrainService } from '@assistant/train-domain';
-import { AgentRuntime } from '@assistant/agent-runtime';
+import { AgentRuntime, isOnSale, maxOnSaleDate, saleOpensOn, sameWeekdayOnOrBefore } from '@assistant/agent-runtime';
 import crypto from 'crypto';
 import {
   PairRequestSchema,
@@ -11,6 +11,75 @@ import {
   CreateRunRequestSchema,
   TicketQuerySchema
 } from '@assistant/contracts';
+
+
+async function findTransferRoutes(
+  from: string,
+  to: string,
+  date: string,
+  mcpBridge: any,
+  preferredHub?: string
+): Promise<any[]> {
+  const hubs = preferredHub
+    ? [preferredHub]
+    : ['郑州东', '武汉', '西安北', '南京南', '徐州东', '石家庄', '合肥南', '南昌西', '长沙南', '成都东'].filter(
+        (h) => h !== from && h !== to && !from.includes(h) && !to.includes(h)
+      );
+
+  for (const hub of hubs.slice(0, 2)) {
+    try {
+      const [leg1Tickets, leg2Tickets] = await Promise.all([
+        mcpBridge.getTickets(from, hub, date),
+        mcpBridge.getTickets(hub, to, date)
+      ]);
+
+      if (!leg1Tickets.length || !leg2Tickets.length) continue;
+
+      const pairs: any[] = [];
+      for (const t1 of leg1Tickets.slice(0, 6)) {
+        const arrTime1 = new Date(t1.arrivalAt).getTime();
+        for (const t2 of leg2Tickets.slice(0, 6)) {
+          const depTime2 = new Date(t2.departureAt).getTime();
+          const layoverMin = (depTime2 - arrTime1) / 60000;
+          if (layoverMin >= 30 && layoverMin <= 150) {
+            const totalDuration = (t1.durationMinutes || 120) + (t2.durationMinutes || 120) + Math.round(layoverMin);
+            pairs.push({
+              id: `transfer-${t1.trainCode}-${t2.trainCode}`,
+              trainCode: `${t1.trainCode} ➔ ${t2.trainCode}`,
+              trainNo: `${t1.trainNo}_${t2.trainNo}`,
+              from: t1.from,
+              to: t2.to,
+              departureAt: t1.departureAt,
+              arrivalAt: t2.arrivalAt,
+              durationMinutes: totalDuration,
+              dayDiff: t2.dayDiff || 0,
+              seats: [
+                {
+                  kind: `中转·${hub} (换乘${Math.round(layoverMin)}分)`,
+                  availability: 'available',
+                  count: Math.min(t1.seats?.[0]?.count ?? 9, t2.seats?.[0]?.count ?? 9),
+                  priceMinor: (t1.seats?.[0]?.priceMinor || 0) + (t2.seats?.[0]?.priceMinor || 0),
+                  currency: 'CNY',
+                  rawLabel: `全程约${Math.floor(totalDuration / 60)}小时${totalDuration % 60}分`
+                }
+              ],
+              matchLabels: ['中转推荐', `经由${hub}`],
+              isTransfer: true,
+              transferHub: hub
+            });
+            if (pairs.length >= 2) break;
+          }
+        }
+        if (pairs.length >= 2) break;
+      }
+
+      if (pairs.length > 0) return pairs;
+    } catch (e) {
+      console.warn(`中转查询 ${hub} 失败:`, e);
+    }
+  }
+  return [];
+}
 
 export function buildServer(): { app: any; db: any } {
   const app = fastify({ logger: false });
@@ -153,14 +222,75 @@ export function buildServer(): { app: any; db: any } {
       queryFrom = cleanStation(queryFrom) || "北京";
       queryTo = cleanStation(queryTo) || "上海";
 
-      const tickets = await mcpBridge.getTickets(queryFrom, queryTo, queryDate);
+      // 3. 智能判断是否超出 12306 预售期（预售期通常为 15 天）
+      // 如果未开售，自动计算预售期内同星期几的有效日期作为时刻基准推算
+      const onSale = isOnSale(queryDate, currentDate);
+      let searchedDate = queryDate;
+      let isScheduleReference = false;
+      let saleOpensDate = '';
+
+      if (!onSale) {
+        isScheduleReference = true;
+        saleOpensDate = saleOpensOn(queryDate);
+        const limit = maxOnSaleDate(currentDate);
+        searchedDate = sameWeekdayOnOrBefore(queryDate, limit);
+        if (searchedDate < currentDate) searchedDate = currentDate;
+      }
+
+      // 4. 执行 12306 MCP 查询
+      let tickets = await mcpBridge.getTickets(queryFrom, queryTo, searchedDate);
+
+      // 如果是未开售的推算时刻，将车票时间对齐映射到目标日期
+      if (isScheduleReference && tickets.length > 0) {
+        tickets = tickets.map((t: any) => ({
+          ...t,
+          departureAt: t.departureAt ? queryDate + t.departureAt.slice(10) : t.departureAt,
+          arrivalAt: t.arrivalAt ? queryDate + t.arrivalAt.slice(10) : t.arrivalAt,
+          scheduleReference: true,
+          referenceDate: searchedDate,
+          matchLabels: Array.from(new Set([...(t.matchLabels || []), '时刻参考', '同星期几推算']))
+        }));
+      }
+
+      // 5. 中转方案补充：用户询问中转，或直达车少于 3 趟时，自动组合中转联程方案
+      const wantsTransfer = /(?:中转|换乘|转车|经由|怎么转|没直达|无直达)/.test(userMessage || '');
+      let transferTickets: any[] = [];
+      let usedTransferHub = undefined;
+
+      if (wantsTransfer || tickets.length < 3) {
+        try {
+          transferTickets = await findTransferRoutes(queryFrom, queryTo, searchedDate, mcpBridge);
+          if (transferTickets.length > 0) {
+            usedTransferHub = transferTickets[0].transferHub;
+            if (isScheduleReference) {
+              transferTickets = transferTickets.map((t: any) => ({
+                ...t,
+                departureAt: t.departureAt ? queryDate + t.departureAt.slice(10) : t.departureAt,
+                arrivalAt: t.arrivalAt ? queryDate + t.arrivalAt.slice(10) : t.arrivalAt,
+                scheduleReference: true,
+                referenceDate: searchedDate
+              }));
+            }
+          }
+        } catch (e) {
+          console.warn('查找中转方案异常:', e);
+        }
+      }
+
+      const allMergedTickets = [...tickets, ...transferTickets];
+
       return {
         success: true,
         from: queryFrom,
         to: queryTo,
         date: queryDate,
-        count: tickets.length,
-        tickets: tickets.slice(0, 15) // 返回前 15 趟最匹配车次
+        scheduleReference: isScheduleReference,
+        referenceDate: searchedDate,
+        saleOpensOn: isScheduleReference ? saleOpensDate : undefined,
+        isTransfer: transferTickets.length > 0,
+        transferHub: usedTransferHub,
+        count: allMergedTickets.length,
+        tickets: allMergedTickets.slice(0, 15) // 返回前 15 趟最匹配车次
       };
     } catch (err: any) {
       return reply.status(500).send({

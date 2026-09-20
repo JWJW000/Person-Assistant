@@ -239,6 +239,11 @@ public class AiChatServiceImpl implements IAiChatService {
                                 mcpTo = mcpObj.getStr("to");
                                 mcpDate = mcpObj.getStr("date");
                                 mcpCount = mcpObj.getInt("count", 0);
+                                boolean isScheduleRef = mcpObj.getBool("scheduleReference", false);
+                                String saleOpensOn = mcpObj.getStr("saleOpensOn");
+                                String transferHub = mcpObj.getStr("transferHub");
+                                boolean isTransfer = mcpObj.getBool("isTransfer", false);
+
                                 cn.hutool.json.JSONArray tickets = mcpObj.getJSONArray("tickets");
                                 if (tickets != null && !tickets.isEmpty()) {
                                     // 仅保留最精选车次传递给大模型，避免冗余
@@ -248,9 +253,16 @@ public class AiChatServiceImpl implements IAiChatService {
                                     }
                                     mcpTicketsJson = topTickets.toString();
                                     StringBuilder tb = new StringBuilder();
-                                    tb.append("【已为您自动调用 12306 MCP 官方工具查询实时列车数据】:\n")
-                                      .append("出发城市: ").append(mcpFrom).append("，到达城市: ").append(mcpTo).append("，日期: ").append(mcpDate)
-                                      .append("，实时检索到共 ").append(mcpCount).append(" 趟列车。部分关键优质车次实时余票如下：\n\n");
+                                    if (isScheduleRef) {
+                                        tb.append("【特别提醒：出行日期（").append(mcpDate).append("）尚未到达 12306 预售期，预计 ").append(saleOpensOn).append(" 起正式放票。已为您按近期相同星期几的官方正式运行时刻表智能推算排班】:\n");
+                                    } else {
+                                        tb.append("【已为您自动调用 12306 MCP 官方工具查询实时列车数据】:\n");
+                                    }
+                                    tb.append("出发城市: ").append(mcpFrom).append("，到达城市: ").append(mcpTo).append("，日期: ").append(mcpDate)
+                                      .append("，检索到共 ").append(mcpCount).append(" 趟列车方案。精选推荐车次如下：\n\n");
+                                    if (isTransfer && StringUtils.isNotBlank(transferHub)) {
+                                        tb.append("（注：部分方案已智能匹配经由「").append(transferHub).append("」的中转联程路线，换乘时间充裕）\n\n");
+                                    }
                                     for (int i = 0; i < Math.min(tickets.size(), 8); i++) {
                                         cn.hutool.json.JSONObject t = tickets.getJSONObject(i);
                                         tb.append(i + 1).append(". 车次 ").append(t.getStr("trainCode")).append(": ")
