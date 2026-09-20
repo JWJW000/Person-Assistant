@@ -1,6 +1,17 @@
-import React, { FC, useState } from 'react';
+import React, { FC, useState, useMemo } from 'react';
 import { ConversationItem, useAppStore } from '../store';
-import { MessageSquare, Plus, Trash2, X, Clock, Edit2, Check } from 'lucide-react';
+import {
+  SquarePen,
+  Search,
+  Trash2,
+  X,
+  Edit2,
+  Check,
+  Database,
+  Settings,
+  LogOut,
+  ChevronRight,
+} from 'lucide-react';
 
 interface ConversationDrawerProps {
   isOpen: boolean;
@@ -9,6 +20,8 @@ interface ConversationDrawerProps {
   onNew: () => void;
   onDelete: (id: string) => void;
   onRename: (id: string, newTitle: string) => void;
+  onOpenKnowledge?: () => void;
+  onOpenSettings?: () => void;
 }
 
 export const ConversationDrawer: FC<ConversationDrawerProps> = ({
@@ -18,10 +31,52 @@ export const ConversationDrawer: FC<ConversationDrawerProps> = ({
   onNew,
   onDelete,
   onRename,
+  onOpenKnowledge,
+  onOpenSettings,
 }) => {
-  const { conversations, activeConversationId } = useAppStore();
+  const { conversations, activeConversationId, currentUser, logout } = useAppStore();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // 过滤并按时间分组
+  const filteredList = useMemo(() => {
+    if (!searchQuery.trim()) return conversations;
+    const q = searchQuery.toLowerCase();
+    return conversations.filter((c) => c.title.toLowerCase().includes(q));
+  }, [conversations, searchQuery]);
+
+  const groups = useMemo(() => {
+    const today: ConversationItem[] = [];
+    const yesterday: ConversationItem[] = [];
+    const past7Days: ConversationItem[] = [];
+    const older: ConversationItem[] = [];
+
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const yesterdayStart = todayStart - 86400000;
+    const sevenDaysAgo = todayStart - 6 * 86400000;
+
+    filteredList.forEach((c) => {
+      const time = c.created_at ? new Date(c.created_at).getTime() : 0;
+      if (time >= todayStart) {
+        today.push(c);
+      } else if (time >= yesterdayStart) {
+        yesterday.push(c);
+      } else if (time >= sevenDaysAgo) {
+        past7Days.push(c);
+      } else {
+        older.push(c);
+      }
+    });
+
+    return [
+      { title: '今天', items: today },
+      { title: '昨天', items: yesterday },
+      { title: '前 7 天', items: past7Days },
+      { title: '更早记录', items: older },
+    ].filter((g) => g.items.length > 0);
+  }, [filteredList]);
 
   if (!isOpen) return null;
 
@@ -39,127 +94,209 @@ export const ConversationDrawer: FC<ConversationDrawerProps> = ({
     setEditingId(null);
   };
 
+  const userInitial = (currentUser || 'A').slice(0, 1).toUpperCase();
+
   return (
     <div className="fixed inset-0 z-50 flex antialiased">
-      {/* 背景半透明遮罩 */}
+      {/* 遮罩层 (点击关闭) */}
       <div
         onClick={onClose}
-        className="fixed inset-0 bg-black/30 backdrop-blur-xs transition-opacity"
+        className="absolute inset-0 bg-black/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
       />
 
-      {/* 侧边滑出抽屉 (ui-skills style) */}
-      <div className="relative w-4/5 max-w-xs bg-white h-full border-r border-[#EDEDED] shadow-xl flex flex-col z-10 animate-in slide-in-from-left duration-200">
-        {/* 抽屉头部 */}
-        <div className="safe-top px-4 py-3 border-b border-[#EDEDED] flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-[#F5F5F5] text-[#151515] flex items-center justify-center">
-              <MessageSquare className="w-3.5 h-3.5" />
+      {/* ChatGPT 风格侧边抽屉面板 */}
+      <div className="relative w-[85%] max-w-xs bg-[#FBFBFB] h-full border-r border-black/[0.06] shadow-2xl flex flex-col z-10 animate-in slide-in-from-left duration-200">
+        {/* 抽屉顶部功能栏：新建对话与搜索 */}
+        <div className="safe-top px-3.5 pt-3 pb-2 flex flex-col gap-2.5 border-b border-black/[0.04] bg-white/60 backdrop-blur-md">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => {
+                onNew();
+                onClose();
+              }}
+              className="flex items-center gap-2 h-9 px-3 rounded-xl bg-slate-100 hover:bg-slate-200/80 active:scale-95 transition-all text-slate-800 text-xs font-semibold cursor-pointer"
+            >
+              <SquarePen className="w-4 h-4 text-slate-700" />
+              <span>开启新对话</span>
+            </button>
+
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* 实时搜索框 */}
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="搜索对话..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-100/80 border border-transparent focus:border-slate-300 focus:bg-white rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none transition-all"
+            />
+          </div>
+        </div>
+
+        {/* 会话列表 (按时间轴自然分组) */}
+        <div className="flex-1 overflow-y-auto px-2.5 py-2 space-y-4">
+          {filteredList.length === 0 ? (
+            <div className="text-center py-16 text-xs text-slate-400">
+              {searchQuery ? '未找到相关对话' : '暂无历史对话记录'}
             </div>
-            <span className="font-semibold text-sm text-[#151515]">会话历史</span>
-          </div>
-
-          <button
-            onClick={onClose}
-            className="p-1 text-[#757575] hover:text-[#151515] rounded-md hover:bg-[#F5F5F5] transition-colors cursor-pointer"
-            aria-label="关闭抽屉"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* 开启新会话按钮 (纯黑实体反色按钮，无任何渐变) */}
-        <div className="p-3">
-          <button
-            onClick={() => {
-              onNew();
-              onClose();
-            }}
-            className="w-full h-9 flex items-center justify-center gap-1.5 bg-[#151515] hover:bg-black text-white rounded-lg text-xs font-medium transition-colors cursor-pointer active:scale-[0.99]"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>新建对话</span>
-          </button>
-        </div>
-
-        {/* 会话列表 */}
-        <div className="flex-1 overflow-y-auto px-3 py-1 space-y-1">
-          <div className="text-[10px] font-mono uppercase text-[#A5A5A5] px-2 py-1 flex items-center gap-1">
-            <Clock className="w-3 h-3" />
-            <span>ALL SESSIONS</span>
-          </div>
-
-          {conversations.length === 0 ? (
-            <div className="text-center py-10 text-xs text-[#A5A5A5]">暂无历史会话</div>
           ) : (
-            conversations.map((c: ConversationItem) => {
-              const isActive = c.id === activeConversationId;
-              const isEditing = editingId === c.id;
+            groups.map((g) => (
+              <div key={g.title} className="space-y-1">
+                <div className="text-[11px] font-semibold text-slate-400 px-3 py-1 tracking-tight">
+                  {g.title}
+                </div>
 
-              return (
-                <div
-                  key={c.id}
-                  onClick={() => {
-                    if (!isEditing) {
-                      onSelect(c.id);
-                      onClose();
-                    }
-                  }}
-                  className={`group flex items-center justify-between px-3 py-2 rounded-lg text-xs cursor-pointer transition-colors ${
-                    isActive
-                      ? 'bg-[#F5F5F5] text-[#151515] font-semibold border border-[#EDEDED]'
-                      : 'text-[#757575] hover:bg-[#FAFAFA] hover:text-[#151515] border border-transparent'
-                  }`}
-                >
-                  {isEditing ? (
-                    <div className="flex-1 flex items-center gap-1 mr-1" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="text"
-                        value={editTitle}
-                        onChange={(e) => setEditTitle(e.target.value)}
-                        autoFocus
-                        className="w-full bg-white border border-[#151515] rounded px-1.5 py-0.5 text-xs text-[#151515] outline-none"
-                      />
-                      <button
-                        onClick={(e) => handleConfirmRename(c.id, e)}
-                        className="p-1 hover:text-black text-[#757575]"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ) : (
-                    <span className="truncate flex-1 pr-2">{c.title || '新对话'}</span>
-                  )}
+                {g.items.map((c) => {
+                  const isActive = c.id === activeConversationId;
+                  const isEditing = editingId === c.id;
 
-                  {!isEditing && (
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={(e) => handleStartRename(c, e)}
-                        className="p-1 text-[#A5A5A5] hover:text-[#151515] rounded transition-colors"
-                        title="重命名"
-                      >
-                        <Edit2 className="w-3 h-3" />
-                      </button>
-
-                      {c.id !== 'default' && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (confirm(`确定删除会话「${c.title}」吗？`)) {
-                              onDelete(c.id);
-                            }
-                          }}
-                          className="p-1 text-[#A5A5A5] hover:text-[#CF1322] rounded transition-colors"
-                          title="删除会话"
+                  return (
+                    <div
+                      key={c.id}
+                      onClick={() => {
+                        if (!isEditing) {
+                          onSelect(c.id);
+                          onClose();
+                        }
+                      }}
+                      className={`group flex items-center justify-between px-3 py-2 rounded-xl text-[13px] cursor-pointer transition-all ${
+                        isActive
+                          ? 'bg-slate-200/80 text-slate-900 font-semibold'
+                          : 'text-slate-700 hover:bg-slate-100 active:bg-slate-200/60'
+                      }`}
+                    >
+                      {isEditing ? (
+                        <div
+                          className="flex-1 flex items-center gap-1 mr-1"
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
+                          <input
+                            type="text"
+                            value={editTitle}
+                            onChange={(e) => setEditTitle(e.target.value)}
+                            autoFocus
+                            className="w-full bg-white border border-slate-400 rounded-lg px-2 py-0.5 text-xs text-slate-900 outline-none font-normal"
+                          />
+                          <button
+                            onClick={(e) => handleConfirmRename(c.id, e)}
+                            className="p-1 hover:text-black text-slate-600"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="truncate flex-1 pr-2">{c.title || '新对话'}</span>
+                      )}
+
+                      {!isEditing && (
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={(e) => handleStartRename(c, e)}
+                            className="p-1 text-slate-400 hover:text-slate-700 rounded transition-colors"
+                            title="重命名"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+
+                          {c.id !== 'default' && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (confirm(`确定删除会话「${c.title}」吗？`)) {
+                                  onDelete(c.id);
+                                }
+                              }}
+                              className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
+                              title="删除会话"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
-                  )}
-                </div>
-              );
-            })
+                  );
+                })}
+              </div>
+            ))
           )}
+        </div>
+
+        {/* 抽屉底部：管理工具与个人账号快捷入口 */}
+        <div className="safe-bottom p-2.5 border-t border-black/[0.04] bg-white/70 backdrop-blur-md flex flex-col gap-1">
+          {/* 知识库快捷入口 */}
+          {onOpenKnowledge && (
+            <button
+              onClick={() => {
+                onOpenKnowledge();
+                onClose();
+              }}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 active:scale-[0.99] transition-all cursor-pointer"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <Database className="w-3.5 h-3.5" />
+                </div>
+                <span>知识库管理</span>
+              </div>
+              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+            </button>
+          )}
+
+          {/* 系统设置快捷入口 */}
+          {onOpenSettings && (
+            <button
+              onClick={() => {
+                onOpenSettings();
+                onClose();
+              }}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 active:scale-[0.99] transition-all cursor-pointer"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-6 h-6 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
+                  <Settings className="w-3.5 h-3.5" />
+                </div>
+                <span>系统设置</span>
+              </div>
+              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+            </button>
+          )}
+
+          {/* 用户信息卡片 */}
+          <div className="flex items-center justify-between px-3 py-2 rounded-xl hover:bg-slate-100/80 transition-colors mt-1">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-7 h-7 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-xs shrink-0">
+                {userInitial}
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="text-xs font-bold text-slate-900 truncate">
+                  {currentUser || 'admin'}
+                </span>
+                <span className="text-[10px] text-emerald-600 font-medium">账号正常</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                if (confirm('确定退出当前账号吗？')) {
+                  logout();
+                  onClose();
+                }
+              }}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+              title="退出登录"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       </div>
     </div>

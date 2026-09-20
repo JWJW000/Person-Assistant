@@ -52,6 +52,10 @@ interface AppState {
   logout: () => void;
 }
 
+try {
+  localStorage.removeItem('active_conversation_id');
+} catch {}
+
 export const useAppStore = create<AppState>((set) => ({
   serverUrl: (() => {
     const saved = localStorage.getItem('server_url');
@@ -65,7 +69,7 @@ export const useAppStore = create<AppState>((set) => ({
   accessToken: localStorage.getItem('access_token') || null,
   deviceToken: localStorage.getItem('device_token') || null,
   currentUser: localStorage.getItem('current_user') || null,
-  activeConversationId: localStorage.getItem('active_conversation_id') || 'default',
+  activeConversationId: 'default',
   conversations: [],
   activeKbId: (() => {
     const v = localStorage.getItem('active_kb_id');
@@ -111,7 +115,6 @@ export const useAppStore = create<AppState>((set) => ({
   },
 
   setActiveConversationId: (id) => {
-    localStorage.setItem('active_conversation_id', id);
     set({ activeConversationId: id });
   },
 
@@ -145,6 +148,7 @@ export const useAppStore = create<AppState>((set) => ({
     localStorage.removeItem('current_user');
     localStorage.removeItem('active_kb_id');
     localStorage.removeItem('active_model_id');
+    localStorage.removeItem('active_conversation_id');
     set({
       accessToken: null,
       deviceToken: null,

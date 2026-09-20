@@ -63,7 +63,7 @@ export const DEFAULT_KNOWLEDGE_BASES: KnowledgeBaseItem[] = [
   {
     id: 4,
     name: '系统技术核心知识库',
-    description: '基于阿里百炼 1536 维向量模型与 PostgreSQL pgvector 构建的企业知识底座',
+    description: '企业知识与业务参考文档',
     chunkSize: 500,
     chunkOverlap: 50,
     isPublic: '1',

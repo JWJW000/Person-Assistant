@@ -10,6 +10,7 @@ import {
 import { loginWithRuoYi } from '../lib/auth';
 import { Toast, ToastMessage } from '../components/Toast';
 import {
+  ArrowLeft,
   Database,
   Plus,
   Upload,
@@ -22,10 +23,16 @@ import {
   Layers,
   ArrowRight,
   LogIn,
-  HelpCircle,
+  BookOpen,
+  MessageSquareQuote,
+  Search,
 } from 'lucide-react';
 
-export const KnowledgePage: React.FC = () => {
+interface KnowledgePageProps {
+  onBack?: () => void;
+}
+
+export const KnowledgePage: React.FC<KnowledgePageProps> = ({ onBack }) => {
   const {
     serverUrl,
     accessToken,
@@ -41,6 +48,8 @@ export const KnowledgePage: React.FC = () => {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [kbDropdownOpen, setKbDropdownOpen] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<'all' | 'qa' | 'text'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Toast 统一轻量消息提示 (无阻塞)
   const [toast, setToast] = useState<ToastMessage | null>(null);
@@ -65,7 +74,7 @@ export const KnowledgePage: React.FC = () => {
   const [loggingIn, setLoggingIn] = useState(false);
 
   // 新建词条表单 (支持普通切片与 QA 问答对)
-  const [entryMode, setEntryMode] = useState<'text' | 'qa'>('qa');
+  const [entryMode, setEntryMode] = useState<'qa' | 'text'>('qa');
   const [qaQuestion, setQaQuestion] = useState('');
   const [entryTitle, setEntryTitle] = useState('');
   const [entryContent, setEntryContent] = useState('');
@@ -80,8 +89,6 @@ export const KnowledgePage: React.FC = () => {
 
   const [expandedChunkId, setExpandedChunkId] = useState<number | null>(null);
 
-
-
   const handleQuickLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setLoggingIn(true);
@@ -94,10 +101,10 @@ export const KnowledgePage: React.FC = () => {
       setAccessToken(res.access_token);
       setCurrentUser(loginUser.trim());
       setQuickLoginOpen(false);
-      showToast('success', '账号登录成功，凭证已刷新');
+      showToast('success', '账号登录成功');
       loadChunks();
     } catch (err: any) {
-      showToast('error', err.message || '登录失败，请检查账号密码');
+      showToast('error', err.message || '登录失败，请核对账号密码');
     } finally {
       setLoggingIn(false);
     }
@@ -126,7 +133,7 @@ export const KnowledgePage: React.FC = () => {
       setChunks(res.rows);
       setTotal(res.total);
     } catch (err) {
-      console.warn('获取切片失败:', err);
+      console.warn('获取知识库内容失败:', err);
     } finally {
       setLoading(false);
     }
@@ -151,15 +158,15 @@ export const KnowledgePage: React.FC = () => {
     }
     if (!accessToken) {
       setQuickLoginOpen(true);
-      showToast('info', '写入知识库需要登录系统账号，请先登录');
+      showToast('info', '录入内容需要先登录账号');
       return;
     }
     if (entryMode === 'qa' && !qaQuestion.trim()) {
-      showToast('info', '请输入 QA 标准问题 (Q)');
+      showToast('info', '请输入标准问题');
       return;
     }
     if (!entryContent.trim()) {
-      showToast('info', '请输入答案或词条内容');
+      showToast('info', '请输入回答或内容');
       return;
     }
 
@@ -169,13 +176,13 @@ export const KnowledgePage: React.FC = () => {
         kbId: activeKbId,
         chunkType: entryMode,
         question: entryMode === 'qa' ? qaQuestion.trim() : undefined,
-        title: entryTitle.trim() || (entryMode === 'qa' ? qaQuestion.trim() : '手动录入词条'),
+        title: entryTitle.trim() || (entryMode === 'qa' ? qaQuestion.trim() : '录入内容'),
         content: entryContent.trim(),
         chunkSize: selectedKb?.chunkSize || 500,
         chunkOverlap: selectedKb?.chunkOverlap || 50,
       });
 
-      showToast('success', entryMode === 'qa' ? 'QA 问答对已入库 (仅对 Q 向量化，得分 0.8+)' : `切片入库成功！共生成 ${res.chunkCount} 个向量切片`);
+      showToast('success', entryMode === 'qa' ? '问答对录入成功' : `录入成功，已生成 ${res.chunkCount} 条切片`);
       setTextModalOpen(false);
       setQaQuestion('');
       setEntryTitle('');
@@ -184,9 +191,9 @@ export const KnowledgePage: React.FC = () => {
     } catch (err: any) {
       if (err.message?.includes('登录') || err.message?.includes('401')) {
         setQuickLoginOpen(true);
-        showToast('error', '登录凭据已失效，请重新登录');
+        showToast('error', '登录状态已失效，请重新登录');
       } else {
-        showToast('error', err.message || '词条切片入库失败');
+        showToast('error', err.message || '录入失败，请稍后重试');
       }
     } finally {
       setSubmittingText(false);
@@ -206,10 +213,10 @@ export const KnowledgePage: React.FC = () => {
     reader.onload = (event) => {
       const text = (event.target?.result as string) || '';
       setFileContent(text);
-      showToast('info', `已读取文档「${file.name}」，共 ${text.length} 字符`);
+      showToast('info', `已读取文档「${file.name}」`);
     };
     reader.onerror = () => {
-      showToast('error', '读取本地文件失败，请确保文件编码为 UTF-8');
+      showToast('error', '读取文件失败，请确保文件编码为 UTF-8');
     };
     reader.readAsText(file);
   };
@@ -223,7 +230,7 @@ export const KnowledgePage: React.FC = () => {
     }
     if (!accessToken) {
       setQuickLoginOpen(true);
-      showToast('info', '写入知识库需登录系统账号，请先登录');
+      showToast('info', '导入文档需要先登录账号');
       return;
     }
     if (!fileContent.trim()) {
@@ -242,7 +249,7 @@ export const KnowledgePage: React.FC = () => {
         chunkOverlap: selectedKb?.chunkOverlap || 50,
       });
 
-      showToast('success', `文档切分成功！生成 ${res.chunkCount} 个切片并完成向量化入库`);
+      showToast('success', `导入完成，已生成 ${res.chunkCount} 条切片`);
       setFileModalOpen(false);
       setSelectedFile(null);
       setFileTitle('');
@@ -253,7 +260,7 @@ export const KnowledgePage: React.FC = () => {
         setQuickLoginOpen(true);
         showToast('error', '登录凭据已失效，请重新登录');
       } else {
-        showToast('error', err.message || '文档切片入库失败');
+        showToast('error', err.message || '文档导入失败');
       }
     } finally {
       setSubmittingFile(false);
@@ -262,51 +269,76 @@ export const KnowledgePage: React.FC = () => {
 
   // 删除切片
   const handleDeleteChunk = async (id: number) => {
-    if (!confirm('确定删除该切片吗？删除后将无法通过向量余弦检索召回。')) return;
+    if (!confirm('确定删除该内容吗？删除后将不再参与智能问答检索。')) return;
     try {
       await deleteKnowledgeChunk(serverUrl, accessToken, id);
-      showToast('success', '切片已删除');
+      showToast('success', '内容已删除');
       loadChunks();
     } catch (err: any) {
-      showToast('error', '删除切片失败');
+      showToast('error', '删除失败');
     }
   };
 
+  // 过滤显示
+  const filteredChunks = chunks.filter((c) => {
+    if (activeFilter === 'qa' && c.chunkType !== 'qa') return false;
+    if (activeFilter === 'text' && c.chunkType === 'qa') return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      const matchQ = c.question?.toLowerCase().includes(q);
+      const matchC = c.content?.toLowerCase().includes(q);
+      return matchQ || matchC;
+    }
+    return true;
+  });
+
+  const qaCount = chunks.filter((c) => c.chunkType === 'qa').length;
+  const textCount = chunks.filter((c) => c.chunkType !== 'qa').length;
+
   return (
-    <div className="flex flex-col h-full bg-white text-[#151515] antialiased overflow-hidden relative">
+    <div className="flex flex-col h-full bg-[#F8FAFC] text-slate-900 antialiased overflow-hidden relative">
       {/* 全局轻量 Toast */}
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      {/* 顶部标题栏与知识库切换 */}
-      <header className="safe-top bg-white border-b border-[#EDEDED] px-4 py-2.5 flex flex-col gap-2 z-20 sticky top-0">
+      {/* 顶部标题栏与切换 */}
+      <header className="safe-top bg-white/95 backdrop-blur-xl border-b border-slate-200/80 px-4 py-3 flex flex-col gap-2.5 z-20 sticky top-0 shadow-2xs">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-[#F5F5F5] text-[#151515]">
+          <div className="flex items-center gap-2.5">
+            {onBack && (
+              <button
+                onClick={onBack}
+                className="p-1.5 -ml-1 rounded-xl text-slate-700 hover:bg-slate-100 active:scale-95 transition-all cursor-pointer"
+                title="返回问答"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+            )}
+            <div className="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center shadow-xs">
               <Database className="w-4 h-4" />
             </div>
             <div className="flex flex-col">
-              <span className="text-sm font-semibold tracking-tight text-[#151515]">
-                知识库管理
-              </span>
-              <span className="text-xs text-[#757575] font-mono">
-                PostgreSQL pgvector (混合检索 + QA词条)
+              <h1 className="text-sm font-bold tracking-tight text-slate-900">
+                知识库
+              </h1>
+              <span className="text-[11px] text-slate-400">
+                管理 AI 问答与检索文档
               </span>
             </div>
           </div>
 
-          {/* 操作按钮群 */}
-          <div className="flex items-center gap-1.5">
+          {/* 快捷操作按钮群 */}
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setTextModalOpen(true)}
-              className="flex items-center gap-1 h-8 px-2.5 rounded-lg border border-[#EDEDED] bg-white hover:bg-[#F5F5F5] text-[#151515] text-xs font-medium transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 h-8 px-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold transition-all cursor-pointer shadow-2xs active:scale-95"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>录入词条</span>
+              <Plus className="w-3.5 h-3.5 text-slate-700" />
+              <span>新建问答</span>
             </button>
 
             <button
               onClick={() => setFileModalOpen(true)}
-              className="flex items-center gap-1 h-8 px-2.5 rounded-lg bg-[#151515] hover:bg-black text-white text-xs font-medium transition-colors cursor-pointer active:scale-[0.99]"
+              className="flex items-center gap-1.5 h-8 px-3 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-semibold transition-all cursor-pointer shadow-xs active:scale-95"
             >
               <Upload className="w-3.5 h-3.5" />
               <span>导入文档</span>
@@ -314,32 +346,33 @@ export const KnowledgePage: React.FC = () => {
           </div>
         </div>
 
-        {/* 知识库切换下拉条 */}
+        {/* 知识库切换选择胶囊 */}
         <div className="relative">
           <div
             onClick={() => setKbDropdownOpen((prev) => !prev)}
-            className="flex items-center justify-between px-3 py-1.5 bg-[#FAFAFA] hover:bg-[#F5F5F5] rounded-lg border border-[#EDEDED] cursor-pointer transition-colors"
+            className="flex items-center justify-between px-3.5 py-2 bg-slate-50 hover:bg-slate-100/80 rounded-xl border border-slate-200/90 cursor-pointer transition-colors"
           >
             <div className="flex items-center gap-2 min-w-0 flex-1">
-              <span className="text-xs text-[#757575] font-medium shrink-0">当前知识库:</span>
-              <span className="text-xs font-semibold text-[#151515] truncate">
+              <BookOpen className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <span className="text-xs font-semibold text-slate-800 truncate">
                 {selectedKb ? selectedKb.name : '请选择知识库'}
               </span>
             </div>
 
-            <div className="flex items-center gap-1 shrink-0 ml-2">
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#EDEDED] text-[#151515]">
-                {total} 切片
+            <div className="flex items-center gap-1.5 shrink-0 ml-2">
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600 font-medium">
+                {total} 条内容
               </span>
-              <ChevronDown className={`w-3.5 h-3.5 text-[#757575] transition-transform ${kbDropdownOpen ? 'rotate-180' : ''}`} />
+              <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${kbDropdownOpen ? 'rotate-180' : ''}`} />
             </div>
           </div>
 
           {/* 知识库下拉列表 */}
           {kbDropdownOpen && (
-            <div className="absolute top-full left-0 right-0 mt-1 p-1 bg-white rounded-xl border border-[#EDEDED] shadow-xl z-30 flex flex-col gap-0.5">
-              <div className="px-2.5 py-1 text-[11px] text-[#A5A5A5] font-mono border-b border-[#EDEDED]">
-                选择要管理的知识库
+            <div className="absolute top-full left-0 right-0 mt-1 p-1 bg-white rounded-2xl border border-slate-200 shadow-xl z-30 flex flex-col gap-1 ring-1 ring-black/[0.04] animate-in fade-in-50 zoom-in-95 duration-100">
+              <div className="px-3 py-1.5 text-[10px] font-mono uppercase text-slate-400 border-b border-slate-100 flex items-center justify-between">
+                <span>选择知识库</span>
+                <span>共 {knowledgeBases.length} 个</span>
               </div>
 
               {knowledgeBases.map((kb: KnowledgeBaseItem) => {
@@ -351,17 +384,15 @@ export const KnowledgePage: React.FC = () => {
                       setActiveKbId(kb.id);
                       setKbDropdownOpen(false);
                     }}
-                    className={`px-2.5 py-2 rounded-lg text-xs cursor-pointer flex items-center justify-between ${
+                    className={`px-3 py-2.5 rounded-xl text-xs cursor-pointer flex items-center justify-between transition-colors ${
                       isSelected
-                        ? 'bg-[#151515] text-white font-medium'
-                        : 'hover:bg-[#F5F5F5] text-[#151515]'
+                        ? 'bg-slate-900 text-white font-semibold'
+                        : 'hover:bg-slate-50 text-slate-800'
                     }`}
                   >
                     <div className="flex flex-col min-w-0 pr-2">
-                      <span className="truncate font-medium">{kb.name}</span>
-                      <span className={`text-[10px] truncate ${isSelected ? 'text-[#A5A5A5]' : 'text-[#757575]'}`}>
-                        {kb.description || `切片大小 ${kb.chunkSize || 500} 字`}
-                      </span>
+                      <span className="truncate font-semibold">{kb.name}</span>
+                      
                     </div>
                     {isSelected && <Check className="w-4 h-4 text-white shrink-0" />}
                   </div>
@@ -372,149 +403,201 @@ export const KnowledgePage: React.FC = () => {
         </div>
       </header>
 
-      {/* 知识库概览与切片流 */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 pb-28">
-        {/* 未登录提醒横条 */}
+      {/* 核心内容区 */}
+      <div className="flex-1 overflow-y-auto px-4 py-3.5 space-y-3.5 pb-28">
+        {/* 未登录轻提醒 */}
         {!accessToken && (
-          <div className="p-3 rounded-xl border border-[#EDEDED] bg-[#FAFAFA] flex items-center justify-between text-xs">
-            <span className="text-[#757575]">当前为离线或只读模式，录入与切片需登录账号</span>
+          <div className="p-3 rounded-2xl border border-amber-200/80 bg-amber-50/70 flex items-center justify-between text-xs text-amber-900">
+            <span className="text-amber-800 font-medium">当前为离线只读状态，录入与修改需登录</span>
             <button
-              onClick={() => {
-                setQuickLoginOpen(true);
-              }}
-              className="text-xs font-semibold text-[#151515] underline ml-2 shrink-0 cursor-pointer"
+              onClick={() => setQuickLoginOpen(true)}
+              className="text-xs font-bold text-amber-900 underline ml-2 shrink-0 cursor-pointer"
             >
-              立即登录
+              登录账号
             </button>
           </div>
         )}
 
-        {/* Bento 知识库规格卡片 */}
-        <div className="bg-white border border-[#EDEDED] rounded-xl p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.02)] flex flex-col gap-2.5">
-          <div className="flex items-center justify-between text-xs font-mono text-[#A5A5A5] uppercase tracking-wider">
-            <span>KNOWLEDGE BASE SPEC</span>
+        {/* 知识库概览卡片 (极简优雅，无多余技术术语) */}
+        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-slate-900">
+                {selectedKb ? selectedKb.name : '知识库概览'}
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                已就绪
+              </span>
+            </div>
+
             <button
               onClick={loadChunks}
-              className="flex items-center gap-1 text-[10px] text-[#757575] hover:text-[#151515] cursor-pointer"
+              className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-900 p-1 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+              title="刷新列表"
             >
-              <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-slate-900' : ''}`} />
               <span>刷新</span>
             </button>
           </div>
 
-          <div className="flex flex-col gap-1">
-            <span className="text-sm font-semibold text-[#151515]">
-              {selectedKb ? selectedKb.name : '系统知识库'}
+          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 text-xs">
+            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/60 flex flex-col">
+              <span className="text-[11px] text-slate-400 font-medium">问答对 (QA)</span>
+              <span className="font-semibold text-slate-900 text-sm mt-0.5">{qaCount} 组</span>
+            </div>
+            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/60 flex flex-col">
+              <span className="text-[11px] text-slate-400 font-medium">文档切片</span>
+              <span className="font-semibold text-slate-900 text-sm mt-0.5">{textCount} 条</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 筛选与搜索工具条 */}
+        <div className="flex items-center justify-between gap-2 pt-1">
+          {/* 分类筛选 Pills */}
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-xl text-xs font-medium">
+            <button
+              onClick={() => setActiveFilter('all')}
+              className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                activeFilter === 'all'
+                  ? 'bg-white text-slate-900 shadow-2xs font-semibold'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              全部 ({chunks.length})
+            </button>
+            <button
+              onClick={() => setActiveFilter('qa')}
+              className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                activeFilter === 'qa'
+                  ? 'bg-white text-slate-900 shadow-2xs font-semibold'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              问答 ({qaCount})
+            </button>
+            <button
+              onClick={() => setActiveFilter('text')}
+              className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                activeFilter === 'text'
+                  ? 'bg-white text-slate-900 shadow-2xs font-semibold'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              文档 ({textCount})
+            </button>
+          </div>
+
+          {/* 实时快搜 */}
+          <div className="relative flex-1 max-w-[150px]">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="搜索内容..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-2.5 py-1 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 transition-colors"
+            />
+          </div>
+        </div>
+
+        {/* 内容卡片列表 */}
+        {filteredChunks.length === 0 && !loading ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-400 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400">
+              <Layers className="w-6 h-6" />
+            </div>
+            <span className="text-xs text-slate-500">
+              {searchQuery ? '没有找到匹配的内容' : '当前知识库暂无内容'}
             </span>
-            <p className="text-xs text-[#757575] leading-normal">
-              {selectedKb?.description || '基于阿里百炼 1536 维向量模型与 PostgreSQL pgvector 构建的企业知识底座'}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2 pt-1 border-t border-[#EDEDED] text-center text-xs">
-            <div className="p-2 rounded-lg bg-[#FAFAFA] border border-[#EDEDED] flex flex-col">
-              <span className="text-[10px] text-[#A5A5A5]">已存切片</span>
-              <span className="font-mono font-semibold text-[#151515] text-sm">{total}</span>
-            </div>
-            <div className="p-2 rounded-lg bg-[#FAFAFA] border border-[#EDEDED] flex flex-col">
-              <span className="text-[10px] text-[#A5A5A5]">检索算法</span>
-              <span className="font-mono text-[#151515] text-xs mt-0.5">混合融合 (0.8+)</span>
-            </div>
-            <div className="p-2 rounded-lg bg-[#FAFAFA] border border-[#EDEDED] flex flex-col">
-              <span className="text-[10px] text-[#A5A5A5]">向量模型</span>
-              <span className="font-mono text-[#151515] text-xs mt-0.5">百炼 V2 1536维</span>
-            </div>
-          </div>
-        </div>
-
-        {/* 切片列表标题 */}
-        <div className="flex items-center justify-between text-xs font-mono text-[#A5A5A5] uppercase tracking-wider px-1">
-          <span>CHUNKS & QA ENTRIES ({chunks.length})</span>
-          <span>按序号升序</span>
-        </div>
-
-        {/* 切片卡片流 */}
-        {chunks.length === 0 && !loading ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-3 text-[#A5A5A5] text-center">
-            <Layers className="w-8 h-8 text-[#EDEDED]" />
-            <span className="text-xs">当前知识库暂无切片内容</span>
             <div className="flex items-center gap-2 pt-1">
               <button
                 onClick={() => setTextModalOpen(true)}
-                className="text-xs text-[#151515] underline font-medium cursor-pointer"
+                className="text-xs text-slate-900 underline font-semibold cursor-pointer"
               >
-                录入 QA / 词条
+                新建问答对
               </button>
-              <span className="text-xs text-[#EDEDED]">或</span>
+              <span className="text-xs text-slate-300">或</span>
               <button
                 onClick={() => setFileModalOpen(true)}
-                className="text-xs text-[#151515] underline font-medium cursor-pointer"
+                className="text-xs text-slate-900 underline font-semibold cursor-pointer"
               >
                 导入本地文档
               </button>
             </div>
           </div>
         ) : (
-          chunks.map((chunk) => {
+          filteredChunks.map((chunk) => {
             const isExpanded = expandedChunkId === chunk.id;
             const isQa = chunk.chunkType === 'qa';
 
             return (
               <div
                 key={chunk.id}
-                className="bg-white border border-[#EDEDED] rounded-xl p-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.02)] flex flex-col gap-2 hover:border-[#151515] transition-colors"
+                className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs flex flex-col gap-2.5 hover:border-slate-300 hover:shadow-sm transition-all"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     {isQa ? (
-                      <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-[#151515] text-white">
-                        QA 问答对
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100">
+                        <MessageSquareQuote className="w-3 h-3 text-indigo-500" />
+                        问答对
                       </span>
                     ) : (
-                      <span className="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-[#F5F5F5] text-[#151515]">
-                        #{chunk.chunkOrder} 切片
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 border border-slate-200/60">
+                        <FileText className="w-3 h-3 text-slate-500" />
+                        文档切片
                       </span>
                     )}
-                    <span className="text-[11px] font-mono text-[#757575]">
-                      {chunk.tokenCount} 字符
+                    <span className="text-[11px] font-mono text-slate-400">
+                      {chunk.tokenCount} 字
                     </span>
                   </div>
 
                   <button
                     onClick={() => handleDeleteChunk(chunk.id)}
-                    className="p-1 text-[#A5A5A5] hover:text-[#CF1322] rounded transition-colors cursor-pointer"
-                    title="删除该切片"
+                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                    title="删除"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
 
-                {/* QA 专属问题展示 */}
+                {/* QA 模式的问题高亮 */}
                 {isQa && chunk.question && (
-                  <div className="p-2 rounded-lg bg-[#FAFAFA] border border-[#EDEDED] text-xs font-medium text-[#151515] flex items-start gap-1.5">
-                    <HelpCircle className="w-3.5 h-3.5 text-[#757575] shrink-0 mt-0.5" />
-                    <span>Q: {chunk.question}</span>
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/60 text-xs font-semibold text-slate-900 flex items-start gap-2">
+                    <span className="w-4 h-4 rounded-md bg-indigo-600 text-white flex items-center justify-center text-[10px] shrink-0 mt-0.5 font-bold">
+                      Q
+                    </span>
+                    <span className="leading-snug">{chunk.question}</span>
                   </div>
                 )}
 
-                {/* 切片正文 / QA 答案 */}
+                {/* 正文或回答 */}
                 <div
                   onClick={() => setExpandedChunkId(isExpanded ? null : chunk.id)}
-                  className={`text-xs text-[#151515] leading-relaxed font-mono whitespace-pre-wrap cursor-pointer ${
+                  className={`text-xs text-slate-700 leading-relaxed whitespace-pre-wrap cursor-pointer ${
                     isExpanded ? '' : 'line-clamp-3'
                   }`}
                 >
-                  {isQa && <span className="text-[#757575] font-sans font-medium mr-1">A:</span>}
+                  {isQa && (
+                    <span className="inline-block w-4 h-4 rounded-md bg-slate-200 text-slate-700 text-center text-[10px] mr-1.5 font-bold align-middle">
+                      A
+                    </span>
+                  )}
                   {chunk.content}
                 </div>
 
-                <div className="flex items-center justify-between pt-1 border-t border-[#EDEDED] text-[10px] font-mono text-[#A5A5A5]">
-                  <span>{chunk.createTime ? chunk.createTime.slice(0, 19).replace('T', ' ') : '已落库'}</span>
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-[11px] text-slate-400">
+                  <span className="font-mono">
+                    {chunk.createTime ? chunk.createTime.slice(0, 16).replace('T', ' ') : '已保存'}
+                  </span>
                   <button
                     onClick={() => setExpandedChunkId(isExpanded ? null : chunk.id)}
-                    className="text-[#757575] hover:text-[#151515] cursor-pointer"
+                    className="text-xs font-medium text-slate-600 hover:text-slate-900 cursor-pointer"
                   >
-                    {isExpanded ? '收起' : '展开'}
+                    {isExpanded ? '收起' : '展开全文'}
                   </button>
                 </div>
               </div>
@@ -523,118 +606,115 @@ export const KnowledgePage: React.FC = () => {
         )}
       </div>
 
-      {/* 弹窗 A：录入词条 (支持普通文本与 QA 模式) */}
+      {/* 弹窗 A：录入问答或长文本 */}
       {textModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="w-full max-w-sm bg-white rounded-2xl border border-[#EDEDED] shadow-2xl p-5 flex flex-col gap-4 animate-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-[#EDEDED] pb-3">
+          <div className="w-full max-w-sm bg-white rounded-2xl border border-slate-200 shadow-2xl p-5 flex flex-col gap-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex flex-col">
-                <span className="text-sm font-semibold text-[#151515]">新建知识词条</span>
-                <span className="text-xs text-[#757575]">支持 QA 问答对（仅检索 Q）与普通长文</span>
+                <span className="text-sm font-bold text-slate-900">新建知识内容</span>
+                <span className="text-xs text-slate-400">添加问答对或文本片段供 AI 参考</span>
               </div>
               <button
                 onClick={() => setTextModalOpen(false)}
-                className="p-1 rounded-md text-[#757575] hover:bg-[#F5F5F5]"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* 模式选择切换胶囊 */}
-            <div className="grid grid-cols-2 p-1 bg-[#FAFAFA] border border-[#EDEDED] rounded-lg text-xs font-medium text-center">
+            {/* 模式选择切换 */}
+            <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-xl text-xs font-semibold text-center">
               <button
                 type="button"
                 onClick={() => setEntryMode('qa')}
-                className={`py-1 rounded-md transition-colors ${
+                className={`py-1.5 rounded-lg transition-all cursor-pointer ${
                   entryMode === 'qa'
-                    ? 'bg-[#151515] text-white shadow-xs'
-                    : 'text-[#757575] hover:text-[#151515]'
+                    ? 'bg-white text-slate-900 shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-900'
                 }`}
               >
-                QA 问答对 (推荐 0.8+)
+                问答对 (QA)
               </button>
               <button
                 type="button"
                 onClick={() => setEntryMode('text')}
-                className={`py-1 rounded-md transition-colors ${
+                className={`py-1.5 rounded-lg transition-all cursor-pointer ${
                   entryMode === 'text'
-                    ? 'bg-[#151515] text-white shadow-xs'
-                    : 'text-[#757575] hover:text-[#151515]'
+                    ? 'bg-white text-slate-900 shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-900'
                 }`}
               >
-                普通长文本切片
+                文本片段
               </button>
             </div>
 
             <form onSubmit={handleSaveTextEntry} className="flex flex-col gap-3">
               {entryMode === 'qa' ? (
                 <>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-[#757575] flex items-center justify-between">
-                      <span>标准问题 (Q) - 仅对此生成向量</span>
-                      <span className="text-[10px] text-emerald-600 font-mono">无杂质干扰</span>
-                    </label>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-slate-700">标准问题</label>
                     <input
                       type="text"
-                      placeholder="如：小米 API Key 是多少？"
+                      placeholder="例如：公司的作息时间是什么？"
                       value={qaQuestion}
                       onChange={(e) => setQaQuestion(e.target.value)}
-                      className="w-full bg-[#FAFAFA] border border-[#EDEDED] rounded-lg px-3 py-2 text-xs text-[#151515] placeholder:text-[#A5A5A5] focus:outline-none focus:border-[#151515]"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 focus:bg-white transition-all font-medium"
                     />
                   </div>
 
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-[#757575]">标准答案 (A) - 召回时注入大模型</label>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-slate-700">标准回答</label>
                     <textarea
-                      rows={5}
-                      placeholder="如：小米api：sk-c4xxesvnwni87qrkfgwsudmyx0c2ep4wkeaw0dvhhin48alm"
+                      rows={4}
+                      placeholder="例如：工作日 9:00 - 18:00，午休时间 12:00 - 13:30。"
                       value={entryContent}
                       onChange={(e) => setEntryContent(e.target.value)}
-                      className="w-full bg-[#FAFAFA] border border-[#EDEDED] rounded-lg p-3 text-xs text-[#151515] placeholder:text-[#A5A5A5] focus:outline-none focus:border-[#151515] font-mono leading-relaxed"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 focus:bg-white transition-all leading-relaxed"
                     />
                   </div>
                 </>
               ) : (
                 <>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-[#757575]">片段标题</label>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-slate-700">标题 (可选)</label>
                     <input
                       type="text"
-                      placeholder="如：系统鉴权架构"
+                      placeholder="例如：服务使用规范"
                       value={entryTitle}
                       onChange={(e) => setEntryTitle(e.target.value)}
-                      className="w-full bg-[#FAFAFA] border border-[#EDEDED] rounded-lg px-3 py-2 text-xs text-[#151515] placeholder:text-[#A5A5A5] focus:outline-none focus:border-[#151515]"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 focus:bg-white transition-all"
                     />
                   </div>
 
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-medium text-[#757575]">正文内容 (自动滑动窗口分块)</label>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-slate-700">内容正文</label>
                     <textarea
-                      rows={6}
-                      placeholder="粘贴长文正文..."
+                      rows={5}
+                      placeholder="粘贴需要让 AI 学习的文档段落..."
                       value={entryContent}
                       onChange={(e) => setEntryContent(e.target.value)}
-                      className="w-full bg-[#FAFAFA] border border-[#EDEDED] rounded-lg p-3 text-xs text-[#151515] placeholder:text-[#A5A5A5] focus:outline-none focus:border-[#151515] font-mono leading-relaxed"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 focus:bg-white transition-all leading-relaxed"
                     />
                   </div>
                 </>
               )}
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#EDEDED]">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setTextModalOpen(false)}
-                  className="h-9 px-3 rounded-lg border border-[#EDEDED] text-xs text-[#757575] hover:bg-[#F5F5F5]"
+                  className="h-9 px-3.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50 cursor-pointer"
                 >
                   取消
                 </button>
                 <button
                   type="submit"
                   disabled={submittingText || (entryMode === 'qa' ? !qaQuestion.trim() : !entryContent.trim())}
-                  className="h-9 px-4 rounded-lg bg-[#151515] hover:bg-black text-white text-xs font-medium flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
+                  className="h-9 px-4 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-40 cursor-pointer shadow-xs active:scale-95 transition-all"
                 >
                   {submittingText ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                  <span>{entryMode === 'qa' ? '保存 QA 词条' : '执行切片入库'}</span>
+                  <span>保存内容</span>
                 </button>
               </div>
             </form>
@@ -642,75 +722,74 @@ export const KnowledgePage: React.FC = () => {
         </div>
       )}
 
-      {/* 弹窗 B：导入本地文档自动切分入库 */}
+      {/* 弹窗 B：导入文档 */}
       {fileModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="w-full max-w-sm bg-white rounded-2xl border border-[#EDEDED] shadow-2xl p-5 flex flex-col gap-4 animate-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-[#EDEDED] pb-3">
+          <div className="w-full max-w-sm bg-white rounded-2xl border border-slate-200 shadow-2xl p-5 flex flex-col gap-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex flex-col">
-                <span className="text-sm font-semibold text-[#151515]">导入本地文档自动切分</span>
-                <span className="text-xs text-[#757575]">支持 .txt, .md, .markdown, .json, .csv 等文档</span>
+                <span className="text-sm font-bold text-slate-900">导入本地文档</span>
+                <span className="text-xs text-slate-400">支持 .txt, .md, .markdown 等格式</span>
               </div>
               <button
                 onClick={() => setFileModalOpen(false)}
-                className="p-1 rounded-md text-[#757575] hover:bg-[#F5F5F5]"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <form onSubmit={handleSaveFileEntry} className="flex flex-col gap-3">
-              {/* 文件选取区域 */}
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".txt,.md,.markdown,.json,.csv,.log,.text"
+                accept=".txt,.md,.markdown,.json,.csv,.text"
                 onChange={handleFileChange}
                 className="hidden"
               />
 
               <div
                 onClick={() => fileInputRef.current?.click()}
-                className="p-4 rounded-xl border border-dashed border-[#EDEDED] hover:border-[#151515] bg-[#FAFAFA] flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors"
+                className="p-5 rounded-2xl border-2 border-dashed border-slate-200 hover:border-slate-400 bg-slate-50/70 hover:bg-slate-50 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors"
               >
-                <FileText className="w-6 h-6 text-[#757575]" />
-                <span className="text-xs font-medium text-[#151515]">
-                  {selectedFile ? selectedFile.name : '点击选取本地 .md / .txt 文档'}
+                <div className="w-10 h-10 rounded-xl bg-white border border-slate-200 flex items-center justify-center shadow-2xs">
+                  <FileText className="w-5 h-5 text-slate-600" />
+                </div>
+                <span className="text-xs font-semibold text-slate-800">
+                  {selectedFile ? selectedFile.name : '点击选择本地文档'}
                 </span>
-                <span className="text-[10px] text-[#A5A5A5]">
+                <span className="text-[11px] text-slate-400 font-mono">
                   {selectedFile
-                    ? `大小: ${(selectedFile.size / 1024).toFixed(1)} KB`
-                    : '支持 UTF-8 编码的 Markdown 与纯文本'}
+                    ? `${(selectedFile.size / 1024).toFixed(1)} KB`
+                    : '支持 Markdown 与纯文本文件'}
                 </span>
               </div>
 
-              {/* 文件名作为标题 */}
               {selectedFile && (
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-[#757575]">入库标题</label>
+                  <label className="text-xs font-semibold text-slate-700">文档名称</label>
                   <input
                     type="text"
                     value={fileTitle}
                     onChange={(e) => setFileTitle(e.target.value)}
-                    className="w-full bg-[#FAFAFA] border border-[#EDEDED] rounded-lg px-3 py-1.5 text-xs text-[#151515] focus:outline-none focus:border-[#151515]"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-slate-400 font-medium"
                   />
                 </div>
               )}
 
-              {/* 提取内容预览 */}
               {fileContent && (
                 <div className="flex flex-col gap-1">
-                  <div className="flex items-center justify-between text-xs text-[#757575]">
-                    <span>内容已读取</span>
+                  <div className="flex items-center justify-between text-xs text-slate-500">
+                    <span>文档预览</span>
                     <span className="font-mono text-[10px]">{fileContent.length} 字符</span>
                   </div>
-                  <div className="max-h-24 overflow-y-auto p-2 rounded-lg bg-[#F5F5F5] border border-[#EDEDED] text-[11px] font-mono text-[#757575] leading-relaxed whitespace-pre-wrap">
+                  <div className="max-h-24 overflow-y-auto p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 leading-relaxed whitespace-pre-wrap">
                     {fileContent}
                   </div>
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#EDEDED]">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => {
@@ -718,23 +797,23 @@ export const KnowledgePage: React.FC = () => {
                     setSelectedFile(null);
                     setFileContent('');
                   }}
-                  className="h-9 px-3 rounded-lg border border-[#EDEDED] text-xs text-[#757575] hover:bg-[#F5F5F5]"
+                  className="h-9 px-3.5 rounded-xl border border-slate-200 text-xs font-medium text-slate-600 hover:bg-slate-50 cursor-pointer"
                 >
                   取消
                 </button>
                 <button
                   type="submit"
                   disabled={submittingFile || !fileContent.trim()}
-                  className="h-9 px-4 rounded-lg bg-[#151515] hover:bg-black text-white text-xs font-medium flex items-center gap-1.5 disabled:opacity-40"
+                  className="h-9 px-4 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-semibold flex items-center gap-1.5 disabled:opacity-40 shadow-xs active:scale-95 transition-all cursor-pointer"
                 >
                   {submittingFile ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>正在分块向量化...</span>
+                      <span>正在导入...</span>
                     </>
                   ) : (
                     <>
-                      <span>执行切分入库</span>
+                      <span>确认导入</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </>
                   )}
@@ -745,55 +824,53 @@ export const KnowledgePage: React.FC = () => {
         </div>
       )}
 
-      {/* 弹窗 C：就地快捷重新登录 (凭证过期时无感补登) */}
+      {/* 弹窗 C：快捷登录 */}
       {quickLoginOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="w-full max-w-sm bg-white rounded-2xl border border-[#EDEDED] shadow-2xl p-5 flex flex-col gap-4 animate-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-[#EDEDED] pb-3">
+          <div className="w-full max-w-sm bg-white rounded-2xl border border-slate-200 shadow-2xl p-5 flex flex-col gap-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
-                <div className="p-1 rounded-md bg-[#F5F5F5]">
-                  <LogIn className="w-4 h-4 text-[#151515]" />
+                <div className="p-1.5 rounded-xl bg-slate-100 text-slate-800">
+                  <LogIn className="w-4 h-4" />
                 </div>
-                <span className="text-sm font-semibold text-[#151515]">登录 RuoYi 账号</span>
+                <span className="text-sm font-bold text-slate-900">登录系统账号</span>
               </div>
               <button
                 onClick={() => setQuickLoginOpen(false)}
-                className="p-1 rounded-md text-[#757575] hover:bg-[#F5F5F5]"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <form onSubmit={handleQuickLogin} className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-[#757575]">账号</label>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-slate-700">账号</label>
                 <input
                   type="text"
                   value={loginUser}
                   onChange={(e) => setLoginUser(e.target.value)}
-                  className="w-full bg-[#FAFAFA] border border-[#EDEDED] rounded-lg px-3 py-2 text-xs text-[#151515] focus:outline-none focus:border-[#151515]"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-slate-400 font-medium"
                 />
               </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-[#757575]">密码</label>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-slate-700">密码</label>
                 <input
                   type="password"
                   value={loginPass}
                   onChange={(e) => setLoginPass(e.target.value)}
-                  className="w-full bg-[#FAFAFA] border border-[#EDEDED] rounded-lg px-3 py-2 text-xs text-[#151515] focus:outline-none focus:border-[#151515]"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-slate-400 font-medium"
                 />
               </div>
-
-
 
               <button
                 type="submit"
                 disabled={loggingIn}
-                className="w-full mt-2 h-9 rounded-lg bg-[#151515] hover:bg-black text-white text-xs font-medium flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                className="w-full mt-2 h-10 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-semibold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs active:scale-95 transition-all"
               >
                 {loggingIn ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                <span>立即登录并保存凭据</span>
+                <span>登录账号</span>
               </button>
             </form>
           </div>

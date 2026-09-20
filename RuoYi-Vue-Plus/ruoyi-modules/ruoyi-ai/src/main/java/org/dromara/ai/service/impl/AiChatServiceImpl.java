@@ -219,7 +219,12 @@ public class AiChatServiceImpl implements IAiChatService {
                                 mcpCount = mcpObj.getInt("count", 0);
                                 cn.hutool.json.JSONArray tickets = mcpObj.getJSONArray("tickets");
                                 if (tickets != null && !tickets.isEmpty()) {
-                                    mcpTicketsJson = tickets.toString();
+                                    // 仅保留最精选车次传递给大模型，避免冗余
+                                    cn.hutool.json.JSONArray topTickets = new cn.hutool.json.JSONArray();
+                                    for (int i = 0; i < Math.min(tickets.size(), 6); i++) {
+                                        topTickets.add(tickets.getJSONObject(i));
+                                    }
+                                    mcpTicketsJson = topTickets.toString();
                                     StringBuilder tb = new StringBuilder();
                                     tb.append("【已为您自动调用 12306 MCP 官方工具查询实时列车数据】:\n")
                                       .append("出发城市: ").append(mcpFrom).append("，到达城市: ").append(mcpTo).append("，日期: ").append(mcpDate)
@@ -254,18 +259,15 @@ public class AiChatServiceImpl implements IAiChatService {
                     }
                 }
 
-                // 组装最终给大模型的 Prompt
+                // 组装最终给大模型的 Prompt (极简精辟，车票数据由原生卡片承载)
                 if (mcpSummary != null) {
                     StringBuilder fullPrompt = new StringBuilder();
                     fullPrompt.append(mcpSummary).append("\n");
-                    if (ragChunks != null && !ragChunks.isEmpty()) {
-                        fullPrompt.append(promptToSend).append("\n\n");
-                    }
                     fullPrompt.append("【用户原始问题】:\n").append(userMessage).append("\n\n")
-                              .append("【回答要求】:\n")
-                              .append("1. 明确告知用户已为您连接中国铁路 12306 MCP 官方工具，查询到了实时的车次与余票！\n")
-                              .append("2. 针对用户需求进行车次推荐（如高铁/动车优选、耗时、推荐理由等）。\n")
-                              .append("3. 严格必须在回答末尾输出完整车次的 JSON 代码块（前端将根据该 JSON 自动渲染原生火车票卡片和时刻表弹窗）：\n")
+                              .append("【回答核心要求】:\n")
+                              .append("1. 回复必须精炼克制，总字数严格控制在 50~80 字以内，切忌寒暄套话或繁杂逐趟罗列！\n")
+                              .append("2. 仅用一两句话精简点评推荐的 2~3 趟核心车次（如耗时最短车次、优选早晚车），具体各席别票价经停已由下方卡片完美展示，无需在正文重复列出。\n")
+                              .append("3. 严格在回答最末尾输出车次 JSON 代码块供前端卡片引擎提取：\n")
                               .append("```json\n").append(mcpTicketsJson).append("\n```\n");
                     promptToSend = fullPrompt.toString();
                 }
