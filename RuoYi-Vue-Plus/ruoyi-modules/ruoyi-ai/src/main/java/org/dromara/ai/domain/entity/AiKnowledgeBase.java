@@ -26,6 +26,11 @@ public class AiKnowledgeBase extends BaseEntity {
     private Long id;
 
     /**
+     * 所属用户ID (个人知识库数据隔离)
+     */
+    private Long userId;
+
+    /**
      * 知识库名称
      */
     private String name;

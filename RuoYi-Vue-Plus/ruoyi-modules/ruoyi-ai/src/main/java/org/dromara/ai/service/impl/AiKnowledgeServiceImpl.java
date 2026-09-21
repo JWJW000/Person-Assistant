@@ -14,6 +14,8 @@ import org.dromara.ai.mapper.AiKnowledgeDocumentMapper;
 import org.dromara.ai.mapper.AiModelConfigMapper;
 import org.dromara.ai.service.IAiKnowledgeService;
 import org.dromara.common.core.utils.StringUtils;
+import org.dromara.common.core.exception.ServiceException;
+import org.dromara.common.satoken.utils.LoginHelper;
 import org.dromara.ai.util.VectorUtils;
 import org.dromara.common.core.domain.PageResult;
 import org.dromara.common.mybatis.core.page.PageQuery;
@@ -42,11 +44,25 @@ public class AiKnowledgeServiceImpl implements IAiKnowledgeService {
 
     @Override
     public PageResult<AiKnowledgeBase> selectBaseList(AiKnowledgeBase base, PageQuery pageQuery) {
+        Long userId = null;
+        try {
+            userId = LoginHelper.getUserId();
+        } catch (Exception ignored) {}
+
         LambdaQueryWrapper<AiKnowledgeBase> lqw = new LambdaQueryWrapper<>();
         if (base != null) {
             lqw.like(base.getName() != null && !base.getName().isBlank(), AiKnowledgeBase::getName, base.getName())
                .eq(base.getStatus() != null && !base.getStatus().isBlank(), AiKnowledgeBase::getStatus, base.getStatus());
         }
+
+        // 个人知识库核心隔离：每个账号仅能查询自己创建的知识库 (超管除外)
+        if (userId != null && !LoginHelper.isSuperAdmin()) {
+            Long finalUserId = userId;
+            lqw.and(w -> w.eq(AiKnowledgeBase::getUserId, finalUserId)
+                          .or()
+                          .eq(AiKnowledgeBase::getCreateBy, finalUserId));
+        }
+
         lqw.orderByDesc(AiKnowledgeBase::getCreateTime);
         Page<AiKnowledgeBase> page = baseMapper.selectPage(pageQuery.build(), lqw);
         return PageResult.build(page.getRecords(), page.getTotal());
@@ -54,9 +70,24 @@ public class AiKnowledgeServiceImpl implements IAiKnowledgeService {
 
     @Override
     public List<AiKnowledgeBase> selectBaseListAll() {
-        return baseMapper.selectList(new LambdaQueryWrapper<AiKnowledgeBase>()
-            .eq(AiKnowledgeBase::getStatus, "0")
-            .orderByDesc(AiKnowledgeBase::getCreateTime));
+        Long userId = null;
+        try {
+            userId = LoginHelper.getUserId();
+        } catch (Exception ignored) {}
+
+        LambdaQueryWrapper<AiKnowledgeBase> lqw = new LambdaQueryWrapper<AiKnowledgeBase>()
+            .eq(AiKnowledgeBase::getStatus, "0");
+
+        // 下拉选择可用知识库：仅展示当前用户自己的知识库 (超管除外)
+        if (userId != null && !LoginHelper.isSuperAdmin()) {
+            Long finalUserId = userId;
+            lqw.and(w -> w.eq(AiKnowledgeBase::getUserId, finalUserId)
+                          .or()
+                          .eq(AiKnowledgeBase::getCreateBy, finalUserId));
+        }
+
+        lqw.orderByDesc(AiKnowledgeBase::getCreateTime);
+        return baseMapper.selectList(lqw);
     }
 
     @Override
@@ -64,8 +95,34 @@ public class AiKnowledgeServiceImpl implements IAiKnowledgeService {
         return baseMapper.selectById(id);
     }
 
+    private void checkKbOwnership(Long kbId) {
+        if (kbId == null) return;
+        Long userId = null;
+        try {
+            userId = LoginHelper.getUserId();
+        } catch (Exception ignored) {}
+        if (userId == null || LoginHelper.isSuperAdmin()) return;
+
+        AiKnowledgeBase old = baseMapper.selectById(kbId);
+        if (old != null) {
+            boolean isOwner = (old.getUserId() != null && old.getUserId().equals(userId))
+                           || (old.getCreateBy() != null && old.getCreateBy().equals(userId));
+            if (!isOwner) {
+                throw new ServiceException("无权操作他人知识库");
+            }
+        }
+    }
+
     @Override
     public boolean insertBase(AiKnowledgeBase base) {
+        Long userId = null;
+        try {
+            userId = LoginHelper.getUserId();
+        } catch (Exception ignored) {}
+        if (userId != null) {
+            base.setUserId(userId);
+            base.setCreateBy(userId);
+        }
         if (base.getChunkSize() == null || base.getChunkSize() <= 0) {
             base.setChunkSize(500);
         }
@@ -83,12 +140,15 @@ public class AiKnowledgeServiceImpl implements IAiKnowledgeService {
 
     @Override
     public boolean updateBase(AiKnowledgeBase base) {
+        if (base == null || base.getId() == null) return false;
+        checkKbOwnership(base.getId());
         return baseMapper.updateById(base) > 0;
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public boolean deleteBaseById(Long id) {
+        checkKbOwnership(id);
         // 级联清除切片与文档
         chunkMapper.delete(new LambdaQueryWrapper<AiKnowledgeChunk>().eq(AiKnowledgeChunk::getKbId, id));
         documentMapper.delete(new LambdaQueryWrapper<AiKnowledgeDocument>().eq(AiKnowledgeDocument::getKbId, id));
@@ -97,6 +157,7 @@ public class AiKnowledgeServiceImpl implements IAiKnowledgeService {
 
     @Override
     public PageResult<AiKnowledgeDocument> selectDocumentList(Long kbId, PageQuery pageQuery) {
+        checkKbOwnership(kbId);
         LambdaQueryWrapper<AiKnowledgeDocument> lqw = new LambdaQueryWrapper<AiKnowledgeDocument>()
             .eq(AiKnowledgeDocument::getKbId, kbId)
             .orderByDesc(AiKnowledgeDocument::getCreateTime);
@@ -232,6 +293,7 @@ public class AiKnowledgeServiceImpl implements IAiKnowledgeService {
 
     @Override
     public PageResult<AiKnowledgeChunk> selectChunkList(Long kbId, Long docId, String chunkType, String keyword, PageQuery pageQuery) {
+        checkKbOwnership(kbId);
         LambdaQueryWrapper<AiKnowledgeChunk> lqw = new LambdaQueryWrapper<AiKnowledgeChunk>()
             .eq(AiKnowledgeChunk::getKbId, kbId)
             .eq(docId != null && docId > 0, AiKnowledgeChunk::getDocId, docId)
