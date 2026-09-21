@@ -181,7 +181,7 @@ const MessageItem = React.memo<MessageItemProps>(
     const isUser = msg.role === "user";
 
     return (
-      <div className={`flex flex-col ${isUser ? "items-end" : "items-start"} max-w-full min-w-0`}>
+      <div className={`chat-message-enter flex flex-col ${isUser ? "items-end" : "items-start"} max-w-full min-w-0`}>
         {isUser ? (
           <div className="max-w-[82%] sm:max-w-[75%] bg-[#F4F4F4] text-[#0D0D0D] rounded-3xl px-4 py-2.5 text-[15px] leading-relaxed select-text font-normal shadow-none">
             {msg.content}
@@ -737,7 +737,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
       <div ref={chatContainerRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-5">
         {messages.length === 0 ? (
           /* ChatGPT 极简居中欢迎状态 */
-          <div className="flex flex-col items-center justify-center min-h-[62vh] max-w-sm mx-auto text-center px-2 animate-in fade-in duration-300">
+          <div className="chat-welcome-enter flex flex-col items-center justify-center min-h-[62vh] max-w-sm mx-auto text-center px-2">
             {/* 极简居中品牌图标 */}
             <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex items-center justify-center mb-5">
               <img
@@ -801,7 +801,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
 
       {/* ChatGPT 标志性底部输入岛 (轻柔浮动无边框质感，紧密贴合软键盘) */}
       <div className="shrink-0 px-3 pt-1.5 pb-2.5 safe-bottom bg-gradient-to-t from-white via-white/95 to-transparent z-20">
-        <div className="max-w-lg mx-auto bg-[#F4F4F4] rounded-[30px] p-1.5 pl-2 flex items-end gap-1.5 border border-black/[0.04] shadow-[0_2px_14px_rgba(0,0,0,0.03)]">
+        <div className="chat-composer max-w-lg mx-auto bg-[#F4F4F4] rounded-[30px] p-1.5 pl-2 flex items-end gap-1.5 border border-black/[0.04] shadow-[0_2px_14px_rgba(0,0,0,0.03)]">
           {/* 左侧：+ 工具展开按键 */}
           <button
             type="button"
@@ -840,7 +840,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
                 triggerHaptic(30);
               }}
               onClick={handleStopGeneration}
-              className="w-8.5 h-8.5 rounded-full bg-black text-white flex items-center justify-center shrink-0 cursor-pointer active:scale-82 active:bg-zinc-800 transition-all mb-0.5 shadow-xs"
+              className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center shrink-0 cursor-pointer active:bg-zinc-800 transition-all mb-0.5 shadow-xs"
               title="停止生成"
             >
               <Square className="w-3.5 h-3.5 fill-white" />
@@ -856,14 +856,14 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
                 }
               }}
               onClick={() => handleSendMessage()}
-              className={`w-8.5 h-8.5 rounded-full flex items-center justify-center shrink-0 transition-all duration-150 mb-0.5 shadow-xs ${
+              className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all duration-150 mb-0.5 shadow-xs ${
                 inputText.trim()
-                  ? 'bg-black text-white cursor-pointer active:scale-82 active:bg-zinc-800'
+                  ? 'bg-black text-white cursor-pointer active:bg-zinc-800'
                   : 'bg-black/[0.08] text-black/25 cursor-not-allowed'
               }`}
               title="发送"
             >
-              <ArrowUp className="w-4.5 h-4.5 stroke-[2.8]" />
+              <ArrowUp className="w-4 h-4 stroke-[2.8]" />
             </button>
           )}
         </div>
