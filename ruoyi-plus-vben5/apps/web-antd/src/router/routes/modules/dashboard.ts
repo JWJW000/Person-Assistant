@@ -61,16 +61,6 @@ const routes: RouteRecordRaw[] = [
       },
     ],
   },
-  {
-    component: () => import('#/views/_core/about/index.vue'),
-    meta: {
-      icon: 'lucide:copyright',
-      order: 9999,
-      title: $t('demos.vben.about'),
-    },
-    name: 'About',
-    path: '/vben-admin/about',
-  },
 ];
 
 export default routes;
