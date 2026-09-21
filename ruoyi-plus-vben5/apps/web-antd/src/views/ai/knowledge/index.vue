@@ -1,10 +1,15 @@
 <template>
-  <div class="p-4 space-y-4">
+  <div class="h-[calc(100vh-90px)] flex flex-col overflow-hidden p-4 select-none">
     <!-- =================================================================================== -->
     <!-- 模式一：知识库列表概览页面 (viewMode === 'list')                                     -->
     <!-- =================================================================================== -->
     <template v-if="viewMode === 'list'">
-      <a-card title="📚 企业级知识库中心 (PostgreSQL pgvector)" :bordered="false" class="shadow-xs rounded-xl">
+      <a-card
+        title="📚 企业级知识库中心 (PostgreSQL pgvector)"
+        :bordered="false"
+        class="flex-1 min-h-0 flex flex-col overflow-hidden shadow-xs rounded-xl"
+        :body-style="{ flex: '1', minHeight: '0', display: 'flex', flexDirection: 'column', padding: '0', overflow: 'hidden' }"
+      >
         <template #extra>
           <a-space>
             <a-button type="primary" @click="openCreateModal">
@@ -16,66 +21,70 @@
           </a-space>
         </template>
 
-        <!-- 知识库表格 (设置 :pagination="false", 采用底部吸底独立分页栏) -->
-        <a-table
-          :columns="columns"
-          :data-source="kbList"
-          :loading="loading"
-          row-key="id"
-          :pagination="false"
-        >
-          <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'name'">
-              <div
-                class="font-medium text-base text-zinc-900 dark:text-zinc-100 flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors"
-                @click="enterDetailPage(record)"
-                title="点击进入独立页面维护知识库与切片片段"
-              >
-                <span>📖 {{ record.name }}</span>
-                <a-tag v-if="record.isPublic === '1'" color="blue">公开</a-tag>
-                <a-tag v-else color="default">私有</a-tag>
-              </div>
-              <div class="text-xs text-zinc-400 mt-1 line-clamp-1">
-                {{ record.description || '暂无描述' }}
-              </div>
-            </template>
+        <!-- 表格滚动区域 (列表内滑动) -->
+        <div class="flex-1 min-h-0 overflow-hidden">
+          <a-table
+            :columns="columns"
+            :data-source="kbList"
+            :loading="loading"
+            row-key="id"
+            :pagination="false"
+            :scroll="{ y: 'calc(100vh - 275px)', x: 1000 }"
+            class="internal-table"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'name'">
+                <div
+                  class="font-medium text-base text-zinc-900 dark:text-zinc-100 flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors"
+                  @click="enterDetailPage(record)"
+                  title="点击进入独立页面维护知识库与切片片段"
+                >
+                  <span>📖 {{ record.name }}</span>
+                  <a-tag v-if="record.isPublic === '1'" color="blue">公开</a-tag>
+                  <a-tag v-else color="default">私有</a-tag>
+                </div>
+                <div class="text-xs text-zinc-400 mt-1 line-clamp-1">
+                  {{ record.description || '暂无描述' }}
+                </div>
+              </template>
 
-            <template v-else-if="column.key === 'config'">
-              <div class="text-xs space-y-0.5 text-zinc-500">
-                <div>切片大小: <span class="font-mono text-zinc-800 dark:text-zinc-200">{{ record.chunkSize || 500 }}</span> 字符</div>
-                <div>重叠字数: <span class="font-mono text-zinc-800 dark:text-zinc-200">{{ record.chunkOverlap || 50 }}</span> 字符</div>
-              </div>
-            </template>
+              <template v-else-if="column.key === 'config'">
+                <div class="text-xs space-y-0.5 text-zinc-500">
+                  <div>切片大小: <span class="font-mono text-zinc-800 dark:text-zinc-200">{{ record.chunkSize || 500 }}</span> 字符</div>
+                  <div>重叠字数: <span class="font-mono text-zinc-800 dark:text-zinc-200">{{ record.chunkOverlap || 50 }}</span> 字符</div>
+                </div>
+              </template>
 
-            <template v-else-if="column.key === 'status'">
-              <a-tag :color="record.status === '0' ? 'success' : 'error'">
-                {{ record.status === '0' ? '正常' : '已停用' }}
-              </a-tag>
-            </template>
+              <template v-else-if="column.key === 'status'">
+                <a-tag :color="record.status === '0' ? 'success' : 'error'">
+                  {{ record.status === '0' ? '正常' : '已停用' }}
+                </a-tag>
+              </template>
 
-            <template v-else-if="column.key === 'action'">
-              <a-space>
-                <a-button type="primary" ghost size="small" @click="enterDetailPage(record)">
-                  知识维护 / 片段管理
-                </a-button>
-                <a-button type="link" size="small" @click="openSearchDrawer(record)">
-                  检索沙盒
-                </a-button>
-                <a-button type="link" size="small" @click="openEditModal(record)">
-                  编辑
-                </a-button>
-                <a-popconfirm title="确定删除该知识库？将同时清理所有关联切片！" @confirm="handleDelete(record.id)">
-                  <a-button type="link" size="small" danger>
-                    删除
+              <template v-else-if="column.key === 'action'">
+                <a-space>
+                  <a-button type="primary" ghost size="small" @click="enterDetailPage(record)">
+                    知识维护 / 片段管理
                   </a-button>
-                </a-popconfirm>
-              </a-space>
+                  <a-button type="link" size="small" @click="openSearchDrawer(record)">
+                    检索沙盒
+                  </a-button>
+                  <a-button type="link" size="small" @click="openEditModal(record)">
+                    编辑
+                  </a-button>
+                  <a-popconfirm title="确定删除该知识库？将同时清理所有关联切片！" @confirm="handleDelete(record.id)">
+                    <a-button type="link" size="small" danger>
+                      删除
+                    </a-button>
+                  </a-popconfirm>
+                </a-space>
+              </template>
             </template>
-          </template>
-        </a-table>
+          </a-table>
+        </div>
 
-        <!-- 知识库列表：底部固定吸底分页栏 -->
-        <div class="sticky bottom-0 z-10 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md px-4 py-3 border-t border-zinc-200/80 dark:border-zinc-800 flex justify-between items-center shadow-xs mt-3 -mx-6 -mb-6 rounded-b-xl">
+        <!-- 底部固定分页栏 (真正固定在底栏，列表在上方滑动) -->
+        <div class="shrink-0 bg-white dark:bg-zinc-900 px-4 py-3 border-t border-zinc-200/80 dark:border-zinc-800 flex justify-between items-center shadow-xs rounded-b-xl z-10">
           <div class="text-xs text-zinc-500">
             共 <span class="font-bold text-zinc-800 dark:text-zinc-200">{{ pagination.total }}</span> 个知识库，当前第 {{ pagination.current }} / {{ Math.ceil(pagination.total / pagination.pageSize) || 1 }} 页
           </div>
@@ -94,13 +103,13 @@
     </template>
 
     <!-- =================================================================================== -->
-    <!-- 模式二：知识库片段维护与编辑独立页面 (viewMode === 'detail', 彻底告别侧边窄抽屉)        -->
+    <!-- 模式二：知识库片段维护与编辑独立页面 (viewMode === 'detail', 列表内滑动 + 底栏固定)     -->
     <!-- =================================================================================== -->
     <template v-else-if="viewMode === 'detail'">
-      <!-- 面包屑返回条 -->
-      <div class="flex items-center justify-between bg-white dark:bg-zinc-900 px-4 py-2.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800 shadow-xs">
+      <!-- 面包屑返回条 (固定在顶部) -->
+      <div class="shrink-0 flex items-center justify-between bg-white dark:bg-zinc-900 px-4 py-2.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800 shadow-xs mb-2.5">
         <div class="flex items-center gap-2">
-          <a-button type="link" @click="backToList" class="p-0 font-semibold text-sm flex items-center gap-1.5 text-blue-600 hover:text-blue-700">
+          <a-button type="link" @click="backToList" class="p-0 font-semibold text-sm flex items-center gap-1.5 text-blue-600 hover:text-blue-700 cursor-pointer">
             ← 返回知识库列表
           </a-button>
           <span class="text-zinc-300 dark:text-zinc-700">/</span>
@@ -125,18 +134,18 @@
         </a-space>
       </div>
 
-      <!-- 知识库核心信息看板条 -->
-      <div class="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-zinc-200/80 dark:border-zinc-800 shadow-xs flex flex-wrap items-center justify-between gap-4">
-        <div class="space-y-1">
+      <!-- 知识库核心信息看板条 (固定在顶部) -->
+      <div class="shrink-0 bg-white dark:bg-zinc-900 p-3.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800 shadow-xs flex flex-wrap items-center justify-between gap-4 mb-2.5">
+        <div class="space-y-0.5">
           <div class="flex items-center gap-2.5">
             <h2 class="text-base font-bold text-zinc-900 dark:text-zinc-100 m-0">
               {{ activeKb?.name }}
             </h2>
-            <a-tag v-if="activeKb?.isPublic === '1'" color="blue">全员公开检索</a-tag>
-            <a-tag v-else color="default">私有权限</a-tag>
+            <a-tag v-if="activeKb?.isPublic === '1'" color="blue">公开知识库</a-tag>
+            <a-tag v-else color="default">私有知识库 (仅本人可见)</a-tag>
             <a-tag color="purple">PostgreSQL pgvector (1536维)</a-tag>
           </div>
-          <p class="text-xs text-zinc-500 m-0 line-clamp-2 max-w-2xl">
+          <p class="text-xs text-zinc-500 m-0 line-clamp-1 max-w-2xl">
             {{ activeKb?.description || '暂无详细描述信息' }}
           </p>
         </div>
@@ -148,9 +157,14 @@
         </div>
       </div>
 
-      <!-- 切片筛选工具栏与主体表格卡片 -->
-      <a-card :bordered="false" class="shadow-xs rounded-xl">
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-zinc-100 dark:border-zinc-800">
+      <!-- 主体卡片 (flex-1 撑满剩余高度，内部表格滑动，底栏固定) -->
+      <a-card
+        :bordered="false"
+        class="flex-1 min-h-0 flex flex-col overflow-hidden shadow-xs rounded-xl"
+        :body-style="{ flex: '1', minHeight: '0', display: 'flex', flexDirection: 'column', padding: '12px 16px 0 16px', overflow: 'hidden' }"
+      >
+        <!-- 过滤器与搜索框 (固定在表格上方) -->
+        <div class="shrink-0 flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-2">
           <div class="flex items-center gap-2">
             <a-radio-group v-model:value="chunkFilterType" button-style="solid" size="small" @change="handleFilterChange">
               <a-radio-button value="all">全部类型 ({{ chunkPagination.total }})</a-radio-button>
@@ -172,71 +186,75 @@
           </div>
         </div>
 
-        <!-- 切片独立页面表格 (采用全屏沉浸式宽度与独立吸底分页) -->
-        <a-table
-          :columns="chunkColumns"
-          :data-source="chunkList"
-          :loading="chunkLoading"
-          row-key="id"
-          size="middle"
-          :pagination="false"
-        >
-          <template #bodyCell="{ column, record, index }">
-            <template v-if="column.key === 'id'">
-              <span class="text-xs font-mono text-zinc-400">#{{ (chunkPagination.current - 1) * chunkPagination.pageSize + index + 1 }}</span>
-            </template>
+        <!-- 切片数据表格 (列表内滑动内部滚动区域) -->
+        <div class="flex-1 min-h-0 overflow-hidden">
+          <a-table
+            :columns="chunkColumns"
+            :data-source="chunkList"
+            :loading="chunkLoading"
+            row-key="id"
+            size="middle"
+            :pagination="false"
+            :scroll="{ y: 'calc(100vh - 380px)', x: 1100 }"
+            class="internal-table"
+          >
+            <template #bodyCell="{ column, record, index }">
+              <template v-if="column.key === 'id'">
+                <span class="text-xs font-mono text-zinc-400">#{{ (chunkPagination.current - 1) * chunkPagination.pageSize + index + 1 }}</span>
+              </template>
 
-            <template v-else-if="column.key === 'chunkType'">
-              <a-tag v-if="record.chunkType === 'qa'" color="purple" class="font-semibold">
-                QA 问答对
-              </a-tag>
-              <a-tag v-else color="blue" class="font-semibold">
-                文本切片
-              </a-tag>
-            </template>
+              <template v-else-if="column.key === 'chunkType'">
+                <a-tag v-if="record.chunkType === 'qa'" color="purple" class="font-semibold">
+                  QA 问答对
+                </a-tag>
+                <a-tag v-else color="blue" class="font-semibold">
+                  文本切片
+                </a-tag>
+              </template>
 
-            <template v-else-if="column.key === 'titleOrQuestion'">
-              <div v-if="record.chunkType === 'qa'" class="font-medium text-sm text-purple-900 dark:text-purple-300">
-                <span class="font-bold text-purple-600 mr-1.5">Q:</span>
-                <span class="select-text">{{ record.question || '-' }}</span>
-              </div>
-              <div v-else class="text-xs text-zinc-600 dark:text-zinc-400 font-mono">
-                {{ record.question || `#${record.chunkOrder || 1} 文本片段` }}
-              </div>
-            </template>
+              <template v-else-if="column.key === 'titleOrQuestion'">
+                <div v-if="record.chunkType === 'qa'" class="font-medium text-sm text-purple-900 dark:text-purple-300">
+                  <span class="font-bold text-purple-600 mr-1.5">Q:</span>
+                  <span class="select-text">{{ record.question || '-' }}</span>
+                </div>
+                <div v-else class="text-xs text-zinc-600 dark:text-zinc-400 font-mono">
+                  {{ record.question || `#${record.chunkOrder || 1} 文本片段` }}
+                </div>
+              </template>
 
-            <template v-else-if="column.key === 'content'">
-              <div class="text-xs leading-relaxed max-h-32 overflow-y-auto whitespace-pre-wrap font-mono bg-zinc-50 dark:bg-zinc-900/90 p-3 rounded-xl border border-zinc-200/80 dark:border-zinc-800 select-text">
-                <span v-if="record.chunkType === 'qa'" class="font-bold text-emerald-600 mr-1.5">A:</span>
-                {{ record.content }}
-              </div>
-            </template>
+              <template v-else-if="column.key === 'content'">
+                <div class="text-xs leading-relaxed max-h-24 overflow-y-auto whitespace-pre-wrap font-mono bg-zinc-50 dark:bg-zinc-900/90 p-2.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800 select-text">
+                  <span v-if="record.chunkType === 'qa'" class="font-bold text-emerald-600 mr-1.5">A:</span>
+                  {{ record.content }}
+                </div>
+              </template>
 
-            <template v-else-if="column.key === 'tokenCount'">
-              <span class="text-xs font-mono text-zinc-500">{{ record.tokenCount || record.content?.length || 0 }} 字符</span>
-            </template>
+              <template v-else-if="column.key === 'tokenCount'">
+                <span class="text-xs font-mono text-zinc-500">{{ record.tokenCount || record.content?.length || 0 }} 字符</span>
+              </template>
 
-            <template v-else-if="column.key === 'createTime'">
-              <span class="text-xs text-zinc-400 font-mono">{{ formatDateTime(record.createTime) }}</span>
-            </template>
+              <template v-else-if="column.key === 'createTime'">
+                <span class="text-xs text-zinc-400 font-mono">{{ formatDateTime(record.createTime) }}</span>
+              </template>
 
-            <template v-else-if="column.key === 'action'">
-              <a-space>
-                <a-button type="link" size="small" @click="openEditChunkModal(record)">
-                  编辑
-                </a-button>
-                <a-popconfirm title="确定删除该切片条目？" @confirm="handleDeleteChunk(record.id)">
-                  <a-button type="link" size="small" danger>
-                    删除
+              <template v-else-if="column.key === 'action'">
+                <a-space>
+                  <a-button type="link" size="small" @click="openEditChunkModal(record)">
+                    编辑
                   </a-button>
-                </a-popconfirm>
-              </a-space>
+                  <a-popconfirm title="确定删除该切片条目？" @confirm="handleDeleteChunk(record.id)">
+                    <a-button type="link" size="small" danger>
+                      删除
+                    </a-button>
+                  </a-popconfirm>
+                </a-space>
+              </template>
             </template>
-          </template>
-        </a-table>
+          </a-table>
+        </div>
 
-        <!-- 切片独立页面：底部吸底固定分页栏 (Sticky Bottom Pagination) -->
-        <div class="sticky bottom-0 z-10 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md px-4 py-3 border-t border-zinc-200/80 dark:border-zinc-800 flex justify-between items-center shadow-xs mt-3 -mx-6 -mb-6 rounded-b-xl">
+        <!-- 切片独立页面：底部固定底栏分页 (真正固定底栏，不随列表滚动) -->
+        <div class="shrink-0 bg-white dark:bg-zinc-900 px-4 py-3 border-t border-zinc-200/80 dark:border-zinc-800 flex justify-between items-center shadow-xs -mx-4 rounded-b-xl z-10">
           <div class="text-xs text-zinc-500">
             共 <span class="font-bold text-zinc-800 dark:text-zinc-200">{{ chunkPagination.total }}</span> 条知识切片，当前第 {{ chunkPagination.current }} / {{ Math.ceil(chunkPagination.total / chunkPagination.pageSize) || 1 }} 页
           </div>
@@ -278,7 +296,7 @@
         </div>
         <a-form-item label="公开属性">
           <a-radio-group v-model:value="formData.isPublic">
-            <a-radio value="0">私有 (仅管理员与授权人员可见)</a-radio>
+            <a-radio value="0">私有 (仅本人可见并调用)</a-radio>
             <a-radio value="1">公开 (全员对话可检索)</a-radio>
           </a-radio-group>
         </a-form-item>
@@ -457,6 +475,19 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
 import { message as antdMessage } from 'antdv-next';
+import {
+  getKnowledgeBasesApi,
+  createKnowledgeBaseApi,
+  updateKnowledgeBaseApi,
+  deleteKnowledgeBaseApi,
+  getKnowledgeChunksApi,
+  deleteKnowledgeChunkApi,
+  updateKnowledgeChunkApi,
+  chunkTextApi,
+  searchKnowledgeChunksApi,
+  type KnowledgeBase,
+  type KnowledgeChunk,
+} from '#/api/ai/knowledge';
 
 const message = {
   success: (msg: string) => {
@@ -481,19 +512,6 @@ const message = {
     }
   },
 };
-import {
-  getKnowledgeBasesApi,
-  createKnowledgeBaseApi,
-  updateKnowledgeBaseApi,
-  deleteKnowledgeBaseApi,
-  getKnowledgeChunksApi,
-  deleteKnowledgeChunkApi,
-  updateKnowledgeChunkApi,
-  chunkTextApi,
-  searchKnowledgeChunksApi,
-  type KnowledgeBase,
-  type KnowledgeChunk,
-} from '#/api/ai/knowledge';
 
 // 页面模式: 'list' (知识库总览) 或 'detail' (知识库片段维护与编辑独立工作台)
 const viewMode = ref<'list' | 'detail'>('list');
@@ -853,3 +871,15 @@ async function handleSearch() {
   }
 }
 </script>
+
+<style scoped>
+.internal-table :deep(.ant-table-body) {
+  overflow-y: auto !important;
+  overflow-x: auto !important;
+}
+.internal-table :deep(.ant-table-header) {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+</style>

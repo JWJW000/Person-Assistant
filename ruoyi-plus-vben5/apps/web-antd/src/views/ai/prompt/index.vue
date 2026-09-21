@@ -1,7 +1,12 @@
 <template>
-  <div class="p-4 space-y-4">
+  <div class="h-[calc(100vh-90px)] flex flex-col overflow-hidden p-4 select-none">
     <!-- 顶部卡片：提示词筛选与全局操作 -->
-    <a-card title="✨ 提示词管理 (System Prompt 指令模板与角色预设)" :bordered="false">
+    <a-card
+      title="✨ 提示词管理 (System Prompt 指令模板与角色预设)"
+      :bordered="false"
+      class="flex-1 min-h-0 flex flex-col overflow-hidden shadow-xs rounded-xl"
+      :body-style="{ flex: '1', minHeight: '0', display: 'flex', flexDirection: 'column', padding: '16px 16px 0 16px', overflow: 'hidden' }"
+    >
       <template #extra>
         <a-space>
           <a-button type="primary" @click="openCreateModal">
@@ -13,8 +18,9 @@
         </a-space>
       </template>
 
-      <!-- 搜索表单 -->
-      <a-form layout="inline" class="mb-4 flex flex-wrap gap-2">
+      <!-- 搜索表单 (固定在顶部) -->
+      <div class="shrink-0 mb-3">
+      <a-form layout="inline" class="flex flex-wrap gap-2">
         <a-form-item label="提示词标题">
           <a-input
             v-model:value="searchForm.title"
@@ -63,15 +69,17 @@
           </a-space>
         </a-form-item>
       </a-form>
+      </div>
 
-      <!-- 提示词表格 -->
+      <!-- 提示词表格滚动区域 (列表内滑动) -->
+      <div class="flex-1 min-h-0 overflow-hidden">
       <a-table
         :columns="columns"
         :data-source="promptList"
         :loading="loading"
         row-key="id"
         :pagination="false"
-        :scroll="{ x: 1200 }"
+        :scroll="{ y: 'calc(100vh - 350px)', x: 1200 }" class="internal-table"
         @change="handleTableChange"
       >
         <template #bodyCell="{ column, record }">
@@ -138,9 +146,10 @@
           </template>
         </template>
       </a-table>
+      </div>
 
       <!-- 底部吸底固定分页栏 (Sticky Bottom Pagination) -->
-      <div class="sticky bottom-0 z-10 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md px-4 py-3 border-t border-zinc-200/80 dark:border-zinc-800 flex justify-between items-center shadow-xs mt-3 -mx-6 -mb-6 rounded-b-xl">
+      <div class="sticky bottom-0 z-10 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md px-4 py-3 border-t border-zinc-200/80 dark:border-zinc-800 flex justify-between items-center shadow-xs mt-0 -mx-4 rounded-b-xl z-10">
         <div class="text-xs text-zinc-500">
           共 <span class="font-bold text-zinc-800 dark:text-zinc-200">{{ pagination.total }}</span> 条提示词模板，当前第 {{ pagination.current }} / {{ Math.ceil(pagination.total / pagination.pageSize) || 1 }} 页
         </div>
@@ -477,3 +486,15 @@ function copyText(text?: string) {
   });
 }
 </script>
+
+<style scoped>
+.internal-table :deep(.ant-table-body) {
+  overflow-y: auto !important;
+  overflow-x: auto !important;
+}
+.internal-table :deep(.ant-table-header) {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+</style>

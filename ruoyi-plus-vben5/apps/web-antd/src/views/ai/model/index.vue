@@ -1,6 +1,11 @@
 <template>
-  <div class="p-4 space-y-4">
-    <a-card title="⚙️ AI 大模型与向量模型配置 (OpenAI 协议兼容)" :bordered="false">
+  <div class="h-[calc(100vh-90px)] flex flex-col overflow-hidden p-4 select-none">
+    <a-card
+      title="⚙️ AI 大模型与向量模型配置 (OpenAI 协议兼容)"
+      :bordered="false"
+      class="flex-1 min-h-0 flex flex-col overflow-hidden shadow-xs rounded-xl"
+      :body-style="{ flex: '1', minHeight: '0', display: 'flex', flexDirection: 'column', padding: '16px 16px 0 16px', overflow: 'hidden' }"
+    >
       <template #extra>
         <a-space>
           <a-button type="primary" @click="openCreateModal">
@@ -12,12 +17,16 @@
         </a-space>
       </template>
 
+      <!-- 模型表格内部滚动区 (列表内滑动) -->
+      <div class="flex-1 min-h-0 overflow-hidden">
       <a-table
         :columns="columns"
         :data-source="modelList"
         :loading="loading"
         row-key="id"
         :pagination="false"
+        :scroll="{ y: 'calc(100vh - 275px)', x: 1000 }"
+        class="internal-table"
         @change="handleTableChange"
       >
         <template #bodyCell="{ column, record }">
@@ -75,9 +84,10 @@
           </template>
         </template>
       </a-table>
+      </div>
 
       <!-- 底部吸底固定分页栏 (Sticky Bottom Pagination) -->
-      <div class="sticky bottom-0 z-10 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md px-4 py-3 border-t border-zinc-200/80 dark:border-zinc-800 flex justify-between items-center shadow-xs mt-3 -mx-6 -mb-6 rounded-b-xl">
+      <div class="sticky bottom-0 z-10 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md px-4 py-3 border-t border-zinc-200/80 dark:border-zinc-800 flex justify-between items-center shadow-xs mt-0 -mx-4 rounded-b-xl z-10">
         <div class="text-xs text-zinc-500">
           共 <span class="font-bold text-zinc-800 dark:text-zinc-200">{{ pagination.total }}</span> 个模型配置，当前第 {{ pagination.current }} / {{ Math.ceil(pagination.total / pagination.pageSize) || 1 }} 页
         </div>
@@ -355,3 +365,15 @@ async function handleSetDefault(id?: number) {
   }
 }
 </script>
+
+<style scoped>
+.internal-table :deep(.ant-table-body) {
+  overflow-y: auto !important;
+  overflow-x: auto !important;
+}
+.internal-table :deep(.ant-table-header) {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+</style>
