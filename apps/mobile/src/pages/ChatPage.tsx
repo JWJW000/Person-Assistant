@@ -1,3 +1,4 @@
+import { triggerHaptic } from '../lib/ripple';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAppStore, AiModelItem } from '../store';
 import { ConversationDrawer } from '../components/ConversationDrawer';
@@ -830,12 +831,16 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
             className="flex-1 bg-transparent text-[15px] text-slate-900 placeholder:text-slate-400 focus:outline-none resize-none py-1.5 px-1 leading-normal font-normal max-h-32"
           />
 
-          {/* 右侧：ChatGPT 经典圆形向上上送键 / 停止键 */}
+          {/* 右侧：ChatGPT 经典圆形向上上送键 / 停止键 (防止失焦打断键盘，强触感) */}
           {loading ? (
             <button
               type="button"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                triggerHaptic(30);
+              }}
               onClick={handleStopGeneration}
-              className="w-8.5 h-8.5 rounded-full bg-black text-white flex items-center justify-center shrink-0 cursor-pointer active:scale-85 active:bg-zinc-800 transition-all mb-0.5 shadow-xs"
+              className="w-8.5 h-8.5 rounded-full bg-black text-white flex items-center justify-center shrink-0 cursor-pointer active:scale-82 active:bg-zinc-800 transition-all mb-0.5 shadow-xs"
               title="停止生成"
             >
               <Square className="w-3.5 h-3.5 fill-white" />
@@ -844,15 +849,21 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
             <button
               type="button"
               disabled={!inputText.trim()}
+              onPointerDown={(e) => {
+                if (inputText.trim()) {
+                  e.preventDefault(); // 核心：阻止失焦导致软键盘收起和输入条移位
+                  triggerHaptic(25);
+                }
+              }}
               onClick={() => handleSendMessage()}
               className={`w-8.5 h-8.5 rounded-full flex items-center justify-center shrink-0 transition-all duration-150 mb-0.5 shadow-xs ${
                 inputText.trim()
-                  ? 'bg-black text-white cursor-pointer active:scale-85 active:bg-zinc-800'
+                  ? 'bg-black text-white cursor-pointer active:scale-82 active:bg-zinc-800'
                   : 'bg-black/[0.08] text-black/25 cursor-not-allowed'
               }`}
               title="发送"
             >
-              <ArrowUp className="w-4.5 h-4.5 stroke-[2.5]" />
+              <ArrowUp className="w-4.5 h-4.5 stroke-[2.8]" />
             </button>
           )}
         </div>
