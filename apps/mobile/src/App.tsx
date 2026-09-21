@@ -12,24 +12,19 @@ export const App: React.FC = () => {
   const { accessToken } = useAppStore();
   const [authMode, setAuthMode] = useState<'login' | 'pair'>('login');
   const [activeOverlay, setActiveOverlay] = useState<'none' | 'knowledge' | 'settings' | 'memory'>('none');
-  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
-
-  // 所有 Hook 必须严格声明在组件顶部，绝不可放在任何条件返回之后（避免 React "Rendered fewer hooks" 白屏崩溃）
+  // 视口与软键盘弹性适配：利用 CSS 变量直接在合成器层更新，绝不在键盘弹起时高频触发 React 根组件重渲染
   useEffect(() => {
-    const handleResize = () => {
+    const syncViewport = () => {
       if (window.visualViewport) {
-        setViewportHeight(window.visualViewport.height);
-        window.scrollTo(0, 0);
+        document.documentElement.style.setProperty('--app-height', `${window.visualViewport.height}px`);
       }
     };
 
     if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', handleResize);
-      window.visualViewport.addEventListener('scroll', handleResize);
-      handleResize();
+      window.visualViewport.addEventListener('resize', syncViewport);
+      syncViewport();
       return () => {
-        window.visualViewport?.removeEventListener('resize', handleResize);
-        window.visualViewport?.removeEventListener('scroll', handleResize);
+        window.visualViewport?.removeEventListener('resize', syncViewport);
       };
     }
   }, []);
@@ -63,7 +58,7 @@ export const App: React.FC = () => {
 
   return (
     <div
-      style={{ height: viewportHeight ? `${viewportHeight}px` : '100dvh' }}
+      style={{ height: 'var(--app-height, 100dvh)' }}
       className="fixed inset-x-0 top-0 flex flex-col overflow-hidden bg-white text-slate-900 antialiased selection:bg-slate-900 selection:text-white"
     >
       <UpdateBanner />

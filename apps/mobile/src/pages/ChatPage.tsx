@@ -37,6 +37,7 @@ import remarkGfm from 'remark-gfm';
 
 function tryParseTicketsFromText(text: string): TrainTicket[] {
   if (!text || text.length < 10) return [];
+  if (!text.includes("\`\`\`") && !/[GCDTZK]\d{1,4}/.test(text)) return [];
   const tickets: TrainTicket[] = [];
 
   const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
@@ -152,6 +153,186 @@ const PROMPT_SUGGESTIONS = [
   },
 ];
 
+interface MessageItemProps {
+  msg: DisplayMessage;
+  activeKbId: number | null;
+  isExpanded: boolean;
+  isCopied: boolean;
+  onCopyText: (text: string) => void;
+  onCopyMessage: (text: string, id: string | number) => void;
+  onRegenerate: (id: string | number) => void;
+  onToggleExpanded: (id: string | number) => void;
+  onViewRoute: (ticket: TrainTicket) => void;
+}
+
+const MessageItem = React.memo<MessageItemProps>(
+  ({
+    msg,
+    activeKbId,
+    isExpanded,
+    isCopied,
+    onCopyText,
+    onCopyMessage,
+    onRegenerate,
+    onToggleExpanded,
+    onViewRoute,
+  }) => {
+    const isUser = msg.role === "user";
+
+    return (
+      <div className={`flex flex-col ${isUser ? "items-end" : "items-start"} max-w-full min-w-0`}>
+        {isUser ? (
+          <div className="max-w-[82%] sm:max-w-[75%] bg-[#F4F4F4] text-[#0D0D0D] rounded-3xl px-4 py-2.5 text-[15px] leading-relaxed select-text font-normal shadow-none">
+            {msg.content}
+          </div>
+        ) : (
+          <div className="w-full max-w-full min-w-0 text-[15px] leading-[1.7] text-[#0D0D0D] select-text">
+            {msg.isStreaming && !msg.content ? (
+              <div className="flex items-center gap-2 py-2 select-none">
+                <div className="flex items-center gap-1 shrink-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-wave-1" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-wave-2" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-wave-3" />
+                </div>
+                <span className="font-mono text-xs text-slate-400">
+                  {activeKbId ? "正在检索知识库并思考..." : "正在深度思考并组织回答..."}
+                </span>
+              </div>
+            ) : (
+              <div className="prose prose-slate max-w-full overflow-hidden text-[#0D0D0D] break-words [word-break:break-word] prose-p:my-2 prose-headings:my-2.5 prose-pre:my-2">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    code({ node, className, children, ...props }) {
+                      const match = /language-(\w+)/.exec(className || "");
+                      const codeText = String(children).replace(/\n$/, "");
+                      const isBlock = match || codeText.includes("\n");
+
+                      if (isBlock) {
+                        return (
+                          <div className="relative my-2.5 max-w-full overflow-hidden rounded-xl border border-slate-200 bg-[#1E1E1E] text-slate-100">
+                            <div className="flex items-center justify-between px-3 py-1.5 bg-[#2D2D2D] border-b border-[#3D3D3D] text-[10px] font-mono text-slate-300">
+                              <span>{match ? match[1].toUpperCase() : "CODE"}</span>
+                              <button
+                                onClick={() => onCopyText(codeText)}
+                                className="flex items-center gap-1 hover:text-white transition-colors cursor-pointer"
+                              >
+                                <Copy className="w-3 h-3" />
+                                <span>复制代码</span>
+                              </button>
+                            </div>
+                            <pre className="p-3 text-xs font-mono text-slate-100 overflow-x-auto max-w-full leading-normal whitespace-pre">
+                              {children}
+                            </pre>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <code
+                          className="inline-flex items-center mx-0.5 px-1.5 py-0.5 rounded-md font-mono text-xs bg-slate-100 text-slate-800 border border-slate-200"
+                          {...props}
+                        >
+                          {children}
+                        </code>
+                      );
+                    },
+                  }}
+                >
+                  {cleanDisplayContent(msg.content)}
+                </ReactMarkdown>
+
+                {msg.isStreaming && (
+                  <span className="inline-block w-1.5 h-4 ml-0.5 bg-slate-900 animate-pulse align-middle" />
+                )}
+              </div>
+            )}
+
+            {/* 12306 车票富卡片 */}
+            {msg.tickets && msg.tickets.length > 0 && (() => {
+              const displayTickets = isExpanded ? msg.tickets : msg.tickets.slice(0, 3);
+              const hasMore = msg.tickets.length > 3;
+
+              return (
+                <div className="w-full mt-3 flex flex-col gap-2 animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between text-xs text-slate-400 font-mono px-1">
+                    <span>12306 精选合适车次 ({displayTickets.length}/{msg.tickets.length})</span>
+                    <span className="text-[10px]">点击卡片查看时刻表</span>
+                  </div>
+                  {displayTickets.map((ticket) => (
+                    <TicketCard
+                      key={ticket.id}
+                      ticket={ticket}
+                      onViewRoute={onViewRoute}
+                    />
+                  ))}
+
+                  {hasMore && (
+                    <button
+                      onClick={() => onToggleExpanded(msg.id)}
+                      className="w-full py-2 px-3 rounded-xl bg-slate-50 hover:bg-slate-100 active:scale-[0.99] text-xs font-semibold text-slate-600 flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-slate-200/60"
+                    >
+                      {isExpanded ? (
+                        <>
+                          <ChevronUp className="w-3.5 h-3.5 text-slate-500" />
+                          <span>收起备选车次</span>
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                          <span>查看其余 {msg.tickets.length - 3} 趟备选车次</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* AI 消息底部微操作行 */}
+            {!isUser && msg.content && !msg.isStreaming && (
+              <div className="flex items-center gap-1.5 mt-2 select-none">
+                <button
+                  onClick={() => onCopyMessage(msg.content, msg.id)}
+                  className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-800 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                  title="复制回答"
+                >
+                  {isCopied ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="text-emerald-600 text-[10px]">已复制</span>
+                    </>
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
+                </button>
+
+                <button
+                  onClick={() => onRegenerate(msg.id)}
+                  className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-800 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                  title="重新生成"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  },
+  (prev, next) => {
+    return (
+      prev.msg.content === next.msg.content &&
+      prev.msg.isStreaming === next.msg.isStreaming &&
+      prev.msg.tickets === next.msg.tickets &&
+      prev.isExpanded === next.isExpanded &&
+      prev.isCopied === next.isCopied &&
+      prev.activeKbId === next.activeKbId
+    );
+  }
+);
+
 interface ChatPageProps {
   onOpenKnowledge?: () => void;
   onOpenSettings?: () => void;
@@ -190,6 +371,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
   const [routeModalOpen, setRouteModalOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const chatContainerRef = useRef<HTMLDivElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const skipNextLoadRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -329,9 +511,6 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
     }
   }, [activeConversationId, loadMessages]);
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
 
   // 切换大模型
   const handleSelectModel = async (model: AiModelItem) => {
@@ -444,6 +623,34 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
     abortControllerRef.current = controller;
 
     let accumulated = '';
+    let lastFlushTime = 0;
+    let pendingRafId: number | null = null;
+
+    const flushStreamBuffer = (forceFinal = false) => {
+      if (pendingRafId) {
+        cancelAnimationFrame(pendingRafId);
+        pendingRafId = null;
+      }
+      const textSnapshot = accumulated;
+      const parsedTickets = textSnapshot.includes('\`\`\`json') ? tryParseTicketsFromText(textSnapshot) : undefined;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === asstMsgId
+            ? {
+                ...m,
+                content: textSnapshot,
+                isStreaming: !forceFinal,
+                tickets: parsedTickets && parsedTickets.length > 0 ? parsedTickets : m.tickets,
+              }
+            : m,
+        ),
+      );
+      lastFlushTime = Date.now();
+      // 在同一渲染帧内快速定位底部，避免平滑滚动打架导致的抖动
+      if (chatContainerRef.current) {
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+      }
+    };
 
     await streamAiChat({
       serverUrl,
@@ -455,21 +662,19 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
       signal: controller.signal,
       onChunk: (chunk) => {
         accumulated += chunk;
-        const parsedTickets = tryParseTicketsFromText(accumulated);
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === asstMsgId
-              ? {
-                  ...m,
-                  content: accumulated,
-                  isStreaming: true,
-                  tickets: parsedTickets.length > 0 ? parsedTickets : m.tickets,
-                }
-              : m,
-          ),
-        );
+        const now = Date.now();
+        // 节流至每 45ms 刷新一次（约 20FPS），释放 80% 主线程算力，避免频繁重新编译 Markdown 导致的卡顿频闪
+        if (now - lastFlushTime > 45) {
+          flushStreamBuffer(false);
+        } else if (!pendingRafId) {
+          pendingRafId = requestAnimationFrame(() => {
+            pendingRafId = null;
+            flushStreamBuffer(false);
+          });
+        }
       },
       onError: (err: any) => {
+        flushStreamBuffer(true);
         setLoading(false);
         abortControllerRef.current = null;
         if (
@@ -483,10 +688,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
         console.warn("生成出错:", err);
       },
       onDone: () => {
-        const parsedTickets = tryParseTicketsFromText(accumulated);
-        setMessages((prev) =>
-          prev.map((m) => (m.id === asstMsgId ? { ...m, isStreaming: false, tickets: parsedTickets.length > 0 ? parsedTickets : m.tickets } : m)),
-        );
+        flushStreamBuffer(true);
         setLoading(false);
         abortControllerRef.current = null;
       },
@@ -531,7 +733,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
       </header>
 
       {/* 消息流区域 (ChatGPT 纯粹无边框直出排版) */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-5">
+      <div ref={chatContainerRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-5">
         {messages.length === 0 ? (
           /* ChatGPT 极简居中欢迎状态 */
           <div className="flex flex-col items-center justify-center min-h-[62vh] max-w-sm mx-auto text-center px-2 animate-in fade-in duration-300">
@@ -576,161 +778,22 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
             </div>
           </div>
         ) : (
-          messages.map((msg) => {
-            const isUser = msg.role === 'user';
-
-            return (
-              <div
-                key={msg.id}
-                className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-full min-w-0`}
-              >
-                {/* 消息主体容器 */}
-                {isUser ? (
-                  /* 用户气泡：ChatGPT 经典灰底温和圆润胶囊 */
-                  <div className="max-w-[82%] sm:max-w-[75%] bg-[#F4F4F4] text-[#0D0D0D] rounded-3xl px-4 py-2.5 text-[15px] leading-relaxed select-text font-normal shadow-none">
-                    {msg.content}
-                  </div>
-                ) : (
-                  /* AI 回复：ChatGPT 标志性无框直出 (直接平铺在画质纯色底上) */
-                  <div className="w-full max-w-full min-w-0 text-[15px] leading-[1.7] text-[#0D0D0D] select-text">
-                    {msg.isStreaming && !msg.content ? (
-                      /* 思考中呼吸状态 */
-                      <div className="flex items-center gap-2 py-2 select-none">
-                        <div className="flex items-center gap-1 shrink-0">
-                          <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-wave-1" />
-                          <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-wave-2" />
-                          <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-wave-3" />
-                        </div>
-                        <span className="font-mono text-xs text-slate-400">
-                          {activeKbId ? '正在检索知识库并思考...' : '正在深度思考并组织回答...'}
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="prose prose-slate max-w-full overflow-hidden text-[#0D0D0D] break-words [word-break:break-word] prose-p:my-2 prose-headings:my-2.5 prose-pre:my-2">
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
-                          components={{
-                            code({ node, className, children, ...props }) {
-                              const match = /language-(\w+)/.exec(className || '');
-                              const codeText = String(children).replace(/\n$/, '');
-                              const isBlock = match || codeText.includes('\n');
-
-                              if (isBlock) {
-                                return (
-                                  <div className="relative my-2.5 max-w-full overflow-hidden rounded-xl border border-slate-200 bg-[#1E1E1E] text-slate-100">
-                                    <div className="flex items-center justify-between px-3 py-1.5 bg-[#2D2D2D] border-b border-[#3D3D3D] text-[10px] font-mono text-slate-300">
-                                      <span>{match ? match[1].toUpperCase() : 'CODE'}</span>
-                                      <button
-                                        onClick={() => copyToClipboard(codeText)}
-                                        className="flex items-center gap-1 hover:text-white transition-colors cursor-pointer"
-                                      >
-                                        <Copy className="w-3 h-3" />
-                                        <span>复制代码</span>
-                                      </button>
-                                    </div>
-                                    <pre className="p-3 text-xs font-mono text-slate-100 overflow-x-auto max-w-full leading-normal whitespace-pre">
-                                      {children}
-                                    </pre>
-                                  </div>
-                                );
-                              }
-
-                              return (
-                                <code
-                                  className="inline-flex items-center mx-0.5 px-1.5 py-0.5 rounded-md font-mono text-xs bg-slate-100 text-slate-800 border border-slate-200"
-                                  {...props}
-                                >
-                                  {children}
-                                </code>
-                              );
-                            },
-                          }}
-                        >
-                          {cleanDisplayContent(msg.content)}
-                        </ReactMarkdown>
-
-                        {msg.isStreaming && (
-                          <span className="inline-block w-1.5 h-4 ml-0.5 bg-slate-900 animate-pulse align-middle" />
-                        )}
-                      </div>
-                    )}
-
-                    {/* 12306 车票富卡片 (类 ChatGPT 插件卡片) */}
-                    {msg.tickets && msg.tickets.length > 0 && (() => {
-                      const isExpanded = expandedTicketsMap[msg.id] ?? false;
-                      const displayTickets = isExpanded ? msg.tickets : msg.tickets.slice(0, 3);
-                      const hasMore = msg.tickets.length > 3;
-
-                      return (
-                        <div className="w-full mt-3 flex flex-col gap-2 animate-in fade-in duration-200">
-                          <div className="flex items-center justify-between text-xs text-slate-400 font-mono px-1">
-                            <span>12306 精选合适车次 ({displayTickets.length}/{msg.tickets.length})</span>
-                            <span className="text-[10px]">点击卡片查看时刻表</span>
-                          </div>
-                          {displayTickets.map((ticket) => (
-                            <TicketCard
-                              key={ticket.id}
-                              ticket={ticket}
-                              onViewRoute={handleViewRoute}
-                            />
-                          ))}
-
-                          {hasMore && (
-                            <button
-                              onClick={() =>
-                                setExpandedTicketsMap((prev) => ({ ...prev, [msg.id]: !isExpanded }))
-                              }
-                              className="w-full py-2 px-3 rounded-xl bg-slate-50 hover:bg-slate-100 active:scale-[0.99] text-xs font-semibold text-slate-600 flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-slate-200/60"
-                            >
-                              {isExpanded ? (
-                                <>
-                                  <ChevronUp className="w-3.5 h-3.5 text-slate-500" />
-                                  <span>收起备选车次</span>
-                                </>
-                              ) : (
-                                <>
-                                  <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
-                                  <span>查看其余 {msg.tickets.length - 3} 趟备选车次</span>
-                                </>
-                              )}
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })()}
-
-                    {/* AI 消息底部极简微操作行 */}
-                    {!isUser && msg.content && !msg.isStreaming && (
-                      <div className="flex items-center gap-1.5 mt-2 select-none">
-                        <button
-                          onClick={() => handleCopyMessage(msg.content, msg.id)}
-                          className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-800 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                          title="复制回答"
-                        >
-                          {copiedMsgId === msg.id ? (
-                            <>
-                              <Check className="w-3.5 h-3.5 text-emerald-600" />
-                              <span className="text-emerald-600 text-[10px]">已复制</span>
-                            </>
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-
-                        <button
-                          onClick={() => handleRegenerate(msg.id)}
-                          className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-800 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                          title="重新生成"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })
+          messages.map((msg) => (
+            <MessageItem
+              key={msg.id}
+              msg={msg}
+              activeKbId={activeKbId}
+              isExpanded={Boolean(expandedTicketsMap[msg.id])}
+              isCopied={copiedMsgId === msg.id}
+              onCopyText={copyToClipboard}
+              onCopyMessage={handleCopyMessage}
+              onRegenerate={handleRegenerate}
+              onToggleExpanded={(id) =>
+                setExpandedTicketsMap((prev) => ({ ...prev, [id]: !prev[id] }))
+              }
+              onViewRoute={handleViewRoute}
+            />
+          ))
         )}
         <div ref={messagesEndRef} />
       </div>
