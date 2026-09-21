@@ -80,6 +80,7 @@ public class AiChatServiceImpl implements IAiChatService {
     private final AiModelConfigMapper modelConfigMapper;
     private final IAiKnowledgeService knowledgeService;
     private final AiPromptMapper promptMapper;
+    private final org.dromara.ai.service.IAiUserMemoryService memoryService;
 
     @Override
     public List<AiChatSession> getUserSessions() {
@@ -168,6 +169,36 @@ public class AiChatServiceImpl implements IAiChatService {
             int mcpCount = 0;
             List<AiKnowledgeChunk> ragChunks = null;
 
+            // 0. 获取当前会话的历史消息（不包括刚插入的当前用户消息），用于多轮对话上下文与意图继承
+            List<AiChatMessage> history = messageMapper.selectList(new LambdaQueryWrapper<AiChatMessage>()
+                .eq(AiChatMessage::getSessionId, sessionId)
+                .ne(AiChatMessage::getStatus, "error")
+                .ne(userMsg.getId() != null, AiChatMessage::getId, userMsg.getId())
+                .orderByAsc(AiChatMessage::getCreateTime));
+
+            // 0.1 构建 Hermes 三层记忆系统快照 (SOUL + USER + MEMORY)
+            String hermesSnapshot = null;
+            String userProfileForMcp = null;
+            try {
+                if (memoryService != null) {
+                    hermesSnapshot = memoryService.buildHermesSystemSnapshot(userId);
+                    userProfileForMcp = memoryService.getEffectiveContent(userId, org.dromara.ai.service.impl.AiUserMemoryServiceImpl.TYPE_USER);
+                }
+            } catch (Exception ex) {
+                log.warn("构建 Hermes 记忆快照异常: {}", ex.getMessage());
+            }
+
+            boolean hasTrainHistory = false;
+            if (history != null && !history.isEmpty()) {
+                for (AiChatMessage h : history) {
+                    String hc = h.getContent();
+                    if (hc != null && (hc.contains("12306") || hc.contains("车次") || hc.contains("高铁") || hc.contains("火车") || hc.contains("出发城市:"))) {
+                        hasTrainHistory = true;
+                        break;
+                    }
+                }
+            }
+
             try {
                 // 获取模型配置：若指定了 modelId 则优先使用，否则取默认模型
                 if (modelId != null && modelId > 0) {
@@ -230,10 +261,11 @@ public class AiChatServiceImpl implements IAiChatService {
                     }
                 }
 
-                // 12306 MCP 智能意图识别与实时查票增强
-                if (isTrainQuery(userMessage)) {
+                // 12306 MCP 智能意图识别与实时查票增强 (结合会话多轮历史继承)
+                boolean shouldQueryTrain = isTrainQuery(userMessage) || (hasTrainHistory && looksLikeTrainFollowup(userMessage));
+                if (shouldQueryTrain) {
                     try {
-                        String mcpResp = callMcpTrainQuery(userMessage);
+                        String mcpResp = callMcpTrainQuery(userMessage, history, userProfileForMcp);
                         if (StringUtils.isNotBlank(mcpResp)) {
                             cn.hutool.json.JSONObject mcpObj = cn.hutool.json.JSONUtil.parseObj(mcpResp);
                             if (mcpObj.getBool("success", false)) {
@@ -364,7 +396,7 @@ public class AiChatServiceImpl implements IAiChatService {
                     } catch (Exception ignored) {}
                 } else {
                     // 调用兼容 OpenAI 协议的流式接口 (DeepSeek / OpenAI 等)
-                    callOpenAiCompatibleStream(config, promptToSend, emitter, assistantReply);
+                    callOpenAiCompatibleStream(config, hermesSnapshot, history, promptToSend, emitter, assistantReply);
                 }
 
             } catch (Exception e) {
@@ -396,6 +428,14 @@ public class AiChatServiceImpl implements IAiChatService {
                     } catch (Exception ex) {
                         log.error("助手回答持久化落库失败: {}", ex.getMessage());
                     }
+                    // 5. 触发 Hermes 异步记忆提炼与自主反思学习 (Async Memory Reflection & Learning)
+                    try {
+                        if (memoryService != null && config != null) {
+                            memoryService.asyncReflectAndLearn(userId, userMessage, assistantReply.toString(), config);
+                        }
+                    } catch (Exception ex) {
+                        log.warn("Hermes 异步反思提炼异常: {}", ex.getMessage());
+                    }
                 }
             }
         });
@@ -408,11 +448,29 @@ public class AiChatServiceImpl implements IAiChatService {
         String lower = msg.toLowerCase();
         return lower.contains("火车") || lower.contains("高铁") || lower.contains("动车") ||
                lower.contains("车票") || lower.contains("12306") || lower.contains("列车") ||
-               lower.contains("时刻表") || lower.contains("余票") ||
-               ((lower.contains("查票") || lower.contains("到") || lower.contains("去")) && (lower.contains("票") || lower.contains("车")));
+               lower.contains("时刻表") || lower.contains("余票") || lower.contains("动卧") ||
+               lower.contains("硬卧") || lower.contains("软卧") || lower.contains("商务座") ||
+               lower.contains("二等座") || lower.contains("一等座") ||
+               ((lower.contains("查票") || lower.contains("到") || lower.contains("去") || lower.contains("至")) && (lower.contains("票") || lower.contains("车") || lower.contains("方案") || lower.contains("时刻"))) ||
+               java.util.regex.Pattern.compile("[\\u4e00-\\u9fa5]{2,6}(?:到|至|去)[\\u4e00-\\u9fa5]{2,6}").matcher(msg).find();
     }
 
-    private String callMcpTrainQuery(String userMessage) {
+    private boolean looksLikeTrainFollowup(String msg) {
+        if (StringUtils.isBlank(msg)) return false;
+        String lower = msg.toLowerCase();
+        return lower.contains("出发") || lower.contains("票") || lower.contains("车") ||
+               lower.contains("点") || lower.contains("早") || lower.contains("晚") ||
+               lower.contains("快") || lower.contains("便宜") || lower.contains("哪个") ||
+               lower.contains("方案") || lower.contains("号") || lower.contains("日") ||
+               lower.contains("次") || lower.contains("转") || lower.contains("改") ||
+               lower.contains("候补") || lower.contains("卧") || lower.contains("二等") ||
+               lower.contains("一等") || lower.contains("商务") || lower.contains("时间") ||
+               lower.contains("几点") || lower.contains("推荐") || lower.contains("定") || lower.contains("订") ||
+               lower.contains("下午") || lower.contains("上午") || lower.contains("中午") || lower.contains("到达") ||
+               lower.contains("班次") || lower.contains("站");
+    }
+
+    private String callMcpTrainQuery(String userMessage, List<AiChatMessage> history, String userProfile) {
         String[] targetUrls = new String[] {
             "http://assistant-server:3000/internal/train/query",
             "http://127.0.0.1:3000/internal/train/query",
@@ -428,7 +486,29 @@ public class AiChatServiceImpl implements IAiChatService {
                 conn.setReadTimeout(20000);
                 conn.setDoOutput(true);
 
-                String payload = String.format("{\"userMessage\":%s}", cn.hutool.json.JSONUtil.quote(userMessage));
+                cn.hutool.json.JSONObject reqObj = new cn.hutool.json.JSONObject();
+                reqObj.set("userMessage", userMessage);
+                if (StringUtils.isNotBlank(userProfile)) {
+                    reqObj.set("userProfile", userProfile);
+                }
+                if (history != null && !history.isEmpty()) {
+                    cn.hutool.json.JSONArray hist = new cn.hutool.json.JSONArray();
+                    int start = Math.max(0, history.size() - 6);
+                    for (int i = start; i < history.size(); i++) {
+                        AiChatMessage hm = history.get(i);
+                        cn.hutool.json.JSONObject ho = new cn.hutool.json.JSONObject();
+                        ho.set("role", hm.getRole());
+                        String txt = hm.getContent();
+                        if (txt.contains("```json")) {
+                            txt = txt.substring(0, txt.indexOf("```json")).trim();
+                        }
+                        ho.set("text", txt);
+                        hist.add(ho);
+                    }
+                    reqObj.set("history", hist);
+                }
+
+                String payload = reqObj.toString();
                 try (OutputStream os = conn.getOutputStream()) {
                     os.write(payload.getBytes(StandardCharsets.UTF_8));
                 }
@@ -449,7 +529,14 @@ public class AiChatServiceImpl implements IAiChatService {
         return null;
     }
 
-    private void callOpenAiCompatibleStream(AiModelConfig config, String message, SseEmitter emitter, StringBuilder assistantReply) throws Exception {
+    private void callOpenAiCompatibleStream(
+        AiModelConfig config,
+        String hermesSnapshot,
+        List<AiChatMessage> history,
+        String message,
+        SseEmitter emitter,
+        StringBuilder assistantReply
+    ) throws Exception {
         String baseUrl = config.getBaseUrl();
         if (baseUrl.endsWith("/")) {
             baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
@@ -462,15 +549,49 @@ public class AiChatServiceImpl implements IAiChatService {
         conn.setRequestProperty("Accept", "text/event-stream");
         conn.setDoOutput(true);
 
-        String jsonPayload = String.format("""
-            {
-              "model": "%s",
-              "stream": true,
-              "messages": [
-                {"role": "user", "content": %s}
-              ]
+        // 构建包含前序对话历史与 Hermes 三层记忆快照的完整 messages 数组
+        cn.hutool.json.JSONArray messagesArray = new cn.hutool.json.JSONArray();
+
+        // 1. 注入 Hermes 三层记忆冻结快照 (SOUL + USER + MEMORY) 作为系统第一级指令
+        if (StringUtils.isNotBlank(hermesSnapshot)) {
+            cn.hutool.json.JSONObject sysMsg = new cn.hutool.json.JSONObject();
+            sysMsg.set("role", "system");
+            sysMsg.set("content", hermesSnapshot);
+            messagesArray.add(sysMsg);
+        }
+
+        // 2. 注入多轮对话历史
+        if (history != null && !history.isEmpty()) {
+            int start = Math.max(0, history.size() - 8);
+            for (int i = start; i < history.size(); i++) {
+                AiChatMessage h = history.get(i);
+                if ("user".equals(h.getRole()) || "assistant".equals(h.getRole())) {
+                    String content = h.getContent();
+                    if ("assistant".equals(h.getRole()) && content.contains("```json")) {
+                        content = content.substring(0, content.indexOf("```json")).trim();
+                    }
+                    if (StringUtils.isNotBlank(content)) {
+                        cn.hutool.json.JSONObject msgObj = new cn.hutool.json.JSONObject();
+                        msgObj.set("role", h.getRole());
+                        msgObj.set("content", content);
+                        messagesArray.add(msgObj);
+                    }
+                }
             }
-            """, config.getModelName(), cn.hutool.json.JSONUtil.quote(message));
+        }
+
+        // 追加当前轮提问
+        cn.hutool.json.JSONObject currentMsg = new cn.hutool.json.JSONObject();
+        currentMsg.set("role", "user");
+        currentMsg.set("content", message);
+        messagesArray.add(currentMsg);
+
+        cn.hutool.json.JSONObject requestBody = new cn.hutool.json.JSONObject();
+        requestBody.set("model", config.getModelName());
+        requestBody.set("stream", true);
+        requestBody.set("messages", messagesArray);
+
+        String jsonPayload = requestBody.toString();
 
         try (OutputStream os = conn.getOutputStream()) {
             os.write(jsonPayload.getBytes(StandardCharsets.UTF_8));

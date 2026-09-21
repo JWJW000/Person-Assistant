@@ -5,12 +5,13 @@ import { PairingPage } from './pages/PairingPage';
 import { ChatPage } from './pages/ChatPage';
 import { KnowledgePage } from './pages/KnowledgePage';
 import { SettingsPage } from './pages/SettingsPage';
+import { MemoryPage } from './pages/MemoryPage';
 import { UpdateBanner } from './components/UpdateBanner';
 
 export const App: React.FC = () => {
   const { accessToken } = useAppStore();
   const [authMode, setAuthMode] = useState<'login' | 'pair'>('login');
-  const [activeOverlay, setActiveOverlay] = useState<'none' | 'knowledge' | 'settings'>('none');
+  const [activeOverlay, setActiveOverlay] = useState<'none' | 'knowledge' | 'settings' | 'memory'>('none');
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
 
   // 所有 Hook 必须严格声明在组件顶部，绝不可放在任何条件返回之后（避免 React "Rendered fewer hooks" 白屏崩溃）
@@ -71,6 +72,7 @@ export const App: React.FC = () => {
       <main className="flex-1 min-h-0 overflow-hidden relative">
         <ChatPage
           onOpenKnowledge={() => setActiveOverlay('knowledge')}
+          onOpenMemory={() => setActiveOverlay('memory')}
           onOpenSettings={() => setActiveOverlay('settings')}
         />
 
@@ -78,6 +80,13 @@ export const App: React.FC = () => {
         {activeOverlay === 'knowledge' && (
           <div className="absolute inset-0 z-40 bg-white animate-in slide-in-from-right duration-200">
             <KnowledgePage onBack={() => setActiveOverlay('none')} />
+          </div>
+        )}
+
+        {/* Hermes 三层记忆系统滑动层 */}
+        {activeOverlay === 'memory' && (
+          <div className="absolute inset-0 z-40 bg-white animate-in slide-in-from-right duration-200">
+            <MemoryPage onBack={() => setActiveOverlay('none')} />
           </div>
         )}
 

@@ -11,6 +11,7 @@ import {
   Settings,
   LogOut,
   ChevronRight,
+  Brain,
 } from 'lucide-react';
 
 interface ConversationDrawerProps {
@@ -21,6 +22,7 @@ interface ConversationDrawerProps {
   onDelete: (id: string) => void;
   onRename: (id: string, newTitle: string) => void;
   onOpenKnowledge?: () => void;
+  onOpenMemory?: () => void;
   onOpenSettings?: () => void;
 }
 
@@ -32,6 +34,7 @@ export const ConversationDrawer: FC<ConversationDrawerProps> = ({
   onDelete,
   onRename,
   onOpenKnowledge,
+  onOpenMemory,
   onOpenSettings,
 }) => {
   const { conversations, activeConversationId, currentUser, logout } = useAppStore();
@@ -232,6 +235,25 @@ export const ConversationDrawer: FC<ConversationDrawerProps> = ({
 
         {/* 抽屉底部：管理工具与个人账号快捷入口 */}
         <div className="safe-bottom p-2.5 border-t border-black/[0.04] bg-white/70 backdrop-blur-md flex flex-col gap-1">
+          {/* Hermes 三层记忆快捷入口 */}
+          {onOpenMemory && (
+            <button
+              onClick={() => {
+                onOpenMemory();
+                onClose();
+              }}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 active:scale-[0.99] transition-all cursor-pointer"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-6 h-6 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <Brain className="w-3.5 h-3.5" />
+                </div>
+                <span>AI 记忆 (Hermes)</span>
+              </div>
+              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+            </button>
+          )}
+
           {/* 知识库快捷入口 */}
           {onOpenKnowledge && (
             <button

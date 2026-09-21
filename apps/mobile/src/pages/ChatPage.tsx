@@ -155,9 +155,10 @@ const PROMPT_SUGGESTIONS = [
 interface ChatPageProps {
   onOpenKnowledge?: () => void;
   onOpenSettings?: () => void;
+  onOpenMemory?: () => void;
 }
 
-export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSettings }) => {
+export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSettings, onOpenMemory }) => {
   const {
     serverUrl,
     accessToken,
@@ -932,6 +933,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
         onDelete={handleDeleteSession}
         onRename={() => {}}
         onOpenKnowledge={onOpenKnowledge}
+        onOpenMemory={onOpenMemory}
         onOpenSettings={onOpenSettings}
       />
 

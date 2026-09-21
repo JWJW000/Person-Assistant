@@ -442,3 +442,84 @@ export async function deleteKnowledgeChunk(
     return false;
   }
 }
+
+export interface UserMemoryData {
+  soul: string;
+  userProfile: string;
+  factLessons: string;
+  updateTime?: string;
+  userId?: string | number;
+}
+
+/**
+ * 获取当前用户的 Hermes 三层记忆 (SOUL / USER / MEMORY)
+ */
+export async function fetchMyMemory(serverUrl: string, token: string | null): Promise<UserMemoryData | null> {
+  if (!token) return null;
+  try {
+    const url = `${getBaseUrl(serverUrl)}/ai/memory/my`;
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: getHeaders(token),
+    });
+    if (res.status === 401) {
+      handle401Unauthorized();
+      return null;
+    }
+    const json = await res.json();
+    if (json.code === 200 && json.data) {
+      return json.data;
+    }
+  } catch (err) {
+    console.warn('获取用户记忆异常:', err);
+  }
+  return null;
+}
+
+/**
+ * 更新用户指定层级的记忆
+ */
+export async function updateMemory(
+  serverUrl: string,
+  token: string | null,
+  type: 'soul' | 'user_profile' | 'fact_lessons',
+  content: string
+): Promise<boolean> {
+  if (!token) return false;
+  try {
+    const url = `${getBaseUrl(serverUrl)}/ai/memory/update`;
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: getHeaders(token),
+      body: JSON.stringify({ type, content }),
+    });
+    const json = await res.json();
+    return json.code === 200;
+  } catch (err) {
+    console.warn('更新用户记忆异常:', err);
+    return false;
+  }
+}
+
+/**
+ * 重置指定层级记忆为默认值
+ */
+export async function clearMemory(
+  serverUrl: string,
+  token: string | null,
+  type: 'soul' | 'user_profile' | 'fact_lessons'
+): Promise<boolean> {
+  if (!token) return false;
+  try {
+    const url = `${getBaseUrl(serverUrl)}/ai/memory/clear?type=${type}`;
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: getHeaders(token),
+    });
+    const json = await res.json();
+    return json.code === 200;
+  } catch (err) {
+    console.warn('清空用户记忆异常:', err);
+    return false;
+  }
+}

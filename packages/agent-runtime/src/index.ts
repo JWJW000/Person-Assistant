@@ -681,31 +681,61 @@ JSON 结构规范：
    */
   public async extractQueryWithLlm(
     userMessage: string,
-    currentDate: string
-  ): Promise<{ from: string; to: string; date: string } | null> {
+    currentDate: string,
+    history?: Array<{ role: string; text?: string; content?: string }>
+  ): Promise<{
+    from: string;
+    to: string;
+    date: string;
+    afterHour?: number;
+    beforeHour?: number;
+    preference?: string;
+  } | null> {
     const cfg = await this.resolveConfig();
     const llm = cfg.enabled ? this.buildClient(cfg) : null;
     if (!llm) return null;
 
+    const historyText =
+      history && history.length > 0
+        ? "【前序对话历史】:\n" +
+          history
+            .map((h) => `${h.role === "user" ? "用户" : "助理"}: ${String(h.text || h.content || "").slice(0, 300)}`)
+            .join("\n") +
+          "\n\n"
+        : "";
+
     const prompt = `你是一个专业的 12306 铁路出行参数抽取引擎。
-根据用户的提问和今天基准日期，提取出发地、目的地与出行日期。
-【今天基准日期】: ${currentDate}
-【用户提问】: ${userMessage}
+根据【前序对话历史】和【当前用户提问】以及【今天基准日期】，提取出发地、目的地与出行日期及出发时间偏好。
+${historyText}【今天基准日期】: ${currentDate}
+【当前用户提问】: ${userMessage}
 
 规则要求：
-1. 精确推算具体出行日期（如“明天”、“后天”、“30号”、“下周一”等，以今天基准日期精确换算为 YYYY-MM-DD）。
-2. 精确识别标准城市名或车站名（如“北京”、“洛阳”、“上海”、“深圳北”，切勿带有“市/站/车票/去/到/有票吗”等任何多余字词）。
+1. 【重要上下文继承】：如果用户当前提问省略了出发地或目的地（例如“我明天12点之后出发”、“30号的呢”、“有硬卧吗”、“哪个最快”），你必须从【前序对话历史】中自动继承出发地和目的地！切勿留空！
+2. 精确推算具体出行日期（以今天基准日期精确换算为 YYYY-MM-DD。若当前提问省略了日期，必须从【前序对话历史】中继承之前讨论的日期！若历史中也没有则默认为今天）。
+3. 车站/城市名提取标准规范名（如“北京”、“洛阳”、“上海”、“深圳北”，切勿带有“市/站/车票/去/到/有票吗”等任何多余字词）。
+4. 识别用户对出发时间的偏好限制（例如“12点之后/下午/晚上/18点前”），按 24 小时制填入 afterHour (出发小时下限) 或 beforeHour (出发小时上限)，若无限制则填 null。
+5. 识别偏好 preference：最快填 "fastest"，最便宜填 "cheapest"，无特殊偏好填 "none"。
 
 只输出以下合法的 JSON 格式，切勿输出多余解释或文字：
 {
   "from": "出发城市或车站名",
   "to": "到达城市或车站名",
-  "date": "YYYY-MM-DD"
+  "date": "YYYY-MM-DD",
+  "afterHour": 12,
+  "beforeHour": null,
+  "preference": "fastest"
 }`;
 
     try {
       const resp = await llm.chat([{ role: "user", content: prompt }], { temperature: 0 });
-      const parsed = LlmClient.extractJson<{ from?: string; to?: string; date?: string }>(resp);
+      const parsed = LlmClient.extractJson<{
+        from?: string;
+        to?: string;
+        date?: string;
+        afterHour?: number | null;
+        beforeHour?: number | null;
+        preference?: string | null;
+      }>(resp);
       if (parsed && parsed.from && parsed.to && parsed.date) {
         const clean = (s: string) =>
           String(s || "")
@@ -715,7 +745,10 @@ JSON 结构规范：
         return {
           from: clean(parsed.from),
           to: clean(parsed.to),
-          date: parsed.date.trim()
+          date: parsed.date.trim(),
+          afterHour: typeof parsed.afterHour === "number" ? parsed.afterHour : undefined,
+          beforeHour: typeof parsed.beforeHour === "number" ? parsed.beforeHour : undefined,
+          preference: parsed.preference && parsed.preference !== "none" ? parsed.preference : undefined
         };
       }
     } catch (err) {

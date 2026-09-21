@@ -176,22 +176,28 @@ export function buildServer(): { app: any; db: any } {
   // 1.1 内部 12306 实时查票与解析接口 (供 RuoYi-Vue-Plus AI 中台直接调用)
   app.post('/internal/train/query', async (req: any, reply: any) => {
     try {
-      const { userMessage, from, to, date } = req.body || {};
+      const { userMessage, from, to, date, via, history, userProfile } = req.body || {};
       const currentDate = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
 
       let queryFrom = from;
       let queryTo = to;
       let queryDate = date;
+      let afterHour: number | undefined = undefined;
+      let beforeHour: number | undefined = undefined;
+      let preference: string | undefined = undefined;
 
       // 1. 全面优先由大模型进行自然语言意图理解与参数抽取 (LLM 提取)
       if (!queryFrom || !queryTo || !queryDate) {
         if (userMessage && userMessage.trim()) {
           try {
-            const llmExtracted = await agentRuntime.extractQueryWithLlm(userMessage, currentDate);
+            const llmExtracted = await agentRuntime.extractQueryWithLlm(userMessage, currentDate, history);
             if (llmExtracted) {
               queryFrom = queryFrom || llmExtracted.from;
               queryTo = queryTo || llmExtracted.to;
               queryDate = queryDate || llmExtracted.date;
+              afterHour = llmExtracted.afterHour;
+              beforeHour = llmExtracted.beforeHour;
+              preference = llmExtracted.preference;
             }
           } catch (e) {
             console.warn("大模型参数抽取异常:", e);
@@ -199,11 +205,43 @@ export function buildServer(): { app: any; db: any } {
         }
       }
 
+      // 从 history 逆向扫描继承 from, to, date 兜底
+      if ((!queryFrom || !queryTo || !queryDate) && history && history.length > 0) {
+        for (let i = history.length - 1; i >= 0; i--) {
+          const txt = String(history[i]?.text || history[i]?.content || "");
+          const m = txt.match(/出发城市[:：]\s*([\u4e00-\u9fa5]{2,6})[，,]\s*到达城市[:：]\s*([\u4e00-\u9fa5]{2,6})(?:[，,]\s*日期[:：]\s*(\d{4}-\d{2}-\d{2}))?/);
+          if (m) {
+            queryFrom = queryFrom || m[1];
+            queryTo = queryTo || m[2];
+            queryDate = queryDate || m[3];
+            break;
+          }
+          const m2 = txt.match(/([\u4e00-\u9fa5]{2,6})(?:到|至|去)([\u4e00-\u9fa5]{2,6})/);
+          if (m2) {
+            queryFrom = queryFrom || m2[1];
+            queryTo = queryTo || m2[2];
+          }
+        }
+      }
+
+      // 从 userProfile (USER.md) 继承常驻城市偏好与出发习惯
+      if (!queryFrom && userProfile) {
+        const cityMatch = userProfile.match(/常用常驻城市[:：]\s*([\u4e00-\u9fa5]{2,6})|常驻(?:城市)?[:：]?\s*([\u4e00-\u9fa5]{2,6})/);
+        if (cityMatch) {
+          queryFrom = cityMatch[1] || cityMatch[2];
+        }
+      }
+      if (afterHour === undefined && userProfile && !/早上|上午|早班/.test(userMessage || "")) {
+        if (/午后|下午|12:00之后|12点之后/.test(userProfile)) {
+          afterHour = 12;
+        }
+      }
+
       // 2. 本地规则快速兜底
       if (!queryFrom || !queryTo || !queryDate) {
-        const parsedQuery = agentRuntime.parseQueryFromText(userMessage || '', currentDate);
-        queryFrom = queryFrom || parsedQuery?.from?.name || '北京';
-        queryTo = queryTo || parsedQuery?.to?.name || '上海';
+        const parsedQuery = agentRuntime.parseQueryFromText(userMessage || "", currentDate);
+        queryFrom = queryFrom || parsedQuery?.from?.name || "北京";
+        queryTo = queryTo || parsedQuery?.to?.name || "上海";
         queryDate = queryDate || parsedQuery?.date || currentDate;
       }
 
@@ -211,7 +249,35 @@ export function buildServer(): { app: any; db: any } {
         queryDate = currentDate;
       }
 
-      
+      // 规则提取时间偏好兜底
+      if (afterHour === undefined && userMessage) {
+        const afterMatch = userMessage.match(/(\d{1,2})[点时:：](?:[0-9]{2})?之[后后以]|(\d{1,2})点半之[后后以]/);
+        if (afterMatch) {
+          afterHour = parseInt(afterMatch[1] || afterMatch[2], 10);
+        } else if (/下午/.test(userMessage)) {
+          afterHour = 12;
+        } else if (/晚上|傍晚/.test(userMessage)) {
+          afterHour = 18;
+        }
+      }
+
+      if (beforeHour === undefined && userMessage) {
+        const beforeMatch = userMessage.match(/(\d{1,2})[点时:：](?:[0-9]{2})?之[前前以]|(\d{1,2})点半之[前前以]/);
+        if (beforeMatch) {
+          beforeHour = parseInt(beforeMatch[1] || beforeMatch[2], 10);
+        } else if (/早[上晨]|上午/.test(userMessage)) {
+          beforeHour = 12;
+        }
+      }
+
+      if (!preference && userMessage) {
+        if (/最快|耗时最短|短|速度快/.test(userMessage)) {
+          preference = "fastest";
+        } else if (/便宜|低价|省钱|经济/.test(userMessage)) {
+          preference = "cheapest";
+        }
+      }
+
       // 深度清洗站名，去除意外带入的动词、连词及修饰后缀 (如 "上海的高铁车次与" -> "上海")
       const cleanStation = (name: string) =>
         String(name || "")
@@ -227,7 +293,7 @@ export function buildServer(): { app: any; db: any } {
       const onSale = isOnSale(queryDate, currentDate);
       let searchedDate = queryDate;
       let isScheduleReference = false;
-      let saleOpensDate = '';
+      let saleOpensDate = "";
 
       if (!onSale) {
         isScheduleReference = true;
@@ -248,8 +314,44 @@ export function buildServer(): { app: any; db: any } {
           arrivalAt: t.arrivalAt ? queryDate + t.arrivalAt.slice(10) : t.arrivalAt,
           scheduleReference: true,
           referenceDate: searchedDate,
-          matchLabels: Array.from(new Set([...(t.matchLabels || []), '时刻参考', '同星期几推算']))
+          matchLabels: Array.from(new Set([...(t.matchLabels || []), "时刻参考", "同星期几推算"]))
         }));
+      }
+
+      // 4.1 根据用户的时间偏好或属性偏好对车次进行筛选和重排序
+      if (tickets.length > 0) {
+        let filtered = tickets;
+        if (afterHour !== undefined && !isNaN(afterHour)) {
+          const matched = filtered.filter((t: any) => {
+            const depTime = t.departureAt ? t.departureAt.slice(11, 16) : "";
+            const h = parseInt(depTime.split(":")[0], 10);
+            return !isNaN(h) && h >= afterHour!;
+          });
+          if (matched.length > 0) filtered = matched;
+        }
+        if (beforeHour !== undefined && !isNaN(beforeHour)) {
+          const matched = filtered.filter((t: any) => {
+            const depTime = t.departureAt ? t.departureAt.slice(11, 16) : "";
+            const h = parseInt(depTime.split(":")[0], 10);
+            return !isNaN(h) && h < beforeHour!;
+          });
+          if (matched.length > 0) filtered = matched;
+        }
+
+        // 排序偏好
+        if (preference === "fastest") {
+          filtered.sort((a: any, b: any) => (a.durationMinutes || 0) - (b.durationMinutes || 0));
+        } else if (preference === "cheapest") {
+          filtered.sort((a: any, b: any) => {
+            const minPrice = (t: any) => {
+              const prices = (t.seats || []).map((s: any) => s.priceMinor || 999999).filter((p: number) => p > 0);
+              return prices.length > 0 ? Math.min(...prices) : 999999;
+            };
+            return minPrice(a) - minPrice(b);
+          });
+        }
+
+        tickets = filtered;
       }
 
       // 5. 中转方案补充：用户询问中转，或直达车少于 3 趟时，自动组合中转联程方案
