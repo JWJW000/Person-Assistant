@@ -1,7 +1,7 @@
 /**
  * 全局触感与微动效引擎 (Zero-Lag Tactile Engine)
  * 1. 激活移动端 WebKit 和 Android WebView 对 :active 伪类的触控响应
- * 2. 硬件级轻触微震动 (Haptic Feedback, 10ms 零布局开销，不阻塞主线程)
+ * 2. 硬件级轻触微震动 (Haptic Feedback, 12ms 物理触感反馈)
  */
 export function initTactileEffects() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
@@ -9,7 +9,7 @@ export function initTactileEffects() {
   // 1. 激活移动端 WebKit 和 Android WebView 对 :active 伪类的触控响应
   document.addEventListener('touchstart', () => {}, { passive: true });
 
-  // 2. 触觉物理反馈 (轻量微震动，避免任何 DOM 计算阻塞)
+  // 2. 硬件微触觉震动（采用微任务触发，不阻塞主线程点击分发）
   document.addEventListener(
     'pointerdown',
     (e: PointerEvent) => {
@@ -25,7 +25,7 @@ export function initTactileEffects() {
 
       if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
         try {
-          navigator.vibrate(10);
+          navigator.vibrate(12);
         } catch {}
       }
     },

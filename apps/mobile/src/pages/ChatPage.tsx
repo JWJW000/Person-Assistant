@@ -714,12 +714,12 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
         {/* 中间：ChatGPT 经典模型切换药丸 (Model Switcher Pill) */}
         <button
           onClick={() => setModelSheetOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full hover:bg-slate-100 active:scale-95 transition-all cursor-pointer max-w-[200px]"
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#F4F4F4] hover:bg-[#EBEBEB] text-[#0D0D0D] active:scale-92 transition-all cursor-pointer max-w-[210px] shadow-2xs"
         >
-          <span className="text-sm font-semibold text-slate-900 tracking-tight truncate">
+          <span className="text-[13px] font-semibold tracking-tight truncate">
             {selectedModel ? selectedModel.name : 'DeepSeek V4 Pro'}
           </span>
-          <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
         </button>
 
         {/* 右侧：开启新对话按钮 */}
@@ -798,9 +798,9 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
         <div ref={messagesEndRef} />
       </div>
 
-      {/* ChatGPT 标志性底部输入岛 (自然融入文档流底部，软键盘弹起时平滑贴合在键盘上方，绝不导致顶栏上移) */}
-      <div className="shrink-0 px-3 pt-1 pb-2 safe-bottom bg-white z-20">
-        <div className="max-w-lg mx-auto bg-[#F4F4F4] rounded-[28px] p-1.5 pl-2 flex items-end gap-1.5 border border-black/[0.04] shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+      {/* ChatGPT 标志性底部输入岛 (轻柔浮动无边框质感，紧密贴合软键盘) */}
+      <div className="shrink-0 px-3 pt-1.5 pb-2.5 safe-bottom bg-gradient-to-t from-white via-white/95 to-transparent z-20">
+        <div className="max-w-lg mx-auto bg-[#F4F4F4] rounded-[30px] p-1.5 pl-2 flex items-end gap-1.5 border border-black/[0.04] shadow-[0_2px_14px_rgba(0,0,0,0.03)]">
           {/* 左侧：+ 工具展开按键 */}
           <button
             type="button"
@@ -835,7 +835,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
             <button
               type="button"
               onClick={handleStopGeneration}
-              className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center shrink-0 cursor-pointer active:scale-90 transition-all mb-0.5 shadow-xs"
+              className="w-8.5 h-8.5 rounded-full bg-black text-white flex items-center justify-center shrink-0 cursor-pointer active:scale-85 active:bg-zinc-800 transition-all mb-0.5 shadow-xs"
               title="停止生成"
             >
               <Square className="w-3.5 h-3.5 fill-white" />
@@ -845,14 +845,14 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
               type="button"
               disabled={!inputText.trim()}
               onClick={() => handleSendMessage()}
-              className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all mb-0.5 ${
+              className={`w-8.5 h-8.5 rounded-full flex items-center justify-center shrink-0 transition-all duration-150 mb-0.5 shadow-xs ${
                 inputText.trim()
-                  ? 'bg-black text-white cursor-pointer active:scale-90 shadow-xs'
-                  : 'bg-black/10 text-slate-400 cursor-not-allowed'
+                  ? 'bg-black text-white cursor-pointer active:scale-85 active:bg-zinc-800'
+                  : 'bg-black/[0.08] text-black/25 cursor-not-allowed'
               }`}
               title="发送"
             >
-              <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+              <ArrowUp className="w-4.5 h-4.5 stroke-[2.5]" />
             </button>
           )}
         </div>
@@ -865,7 +865,8 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
             onClick={() => setModelSheetOpen(false)}
             className="fixed inset-0"
           />
-          <div className="relative w-full max-w-md bg-white rounded-t-3xl sm:rounded-3xl border border-slate-200 shadow-2xl p-4 pb-8 flex flex-col gap-2 z-10 animate-in slide-in-from-bottom duration-200 max-h-[80vh] overflow-y-auto">
+          <div className="relative w-full max-w-md bg-white rounded-t-[32px] sm:rounded-3xl border border-slate-200/80 shadow-2xl p-5 pb-8 flex flex-col gap-2 z-10 animate-in slide-in-from-bottom duration-200 max-h-[80vh] overflow-y-auto">
+            <div className="w-9 h-1 rounded-full bg-slate-300 mx-auto -mt-1 mb-2" />
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <span className="text-sm font-bold text-slate-900">选择对话模型</span>
               <button
@@ -913,7 +914,8 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
             onClick={() => setToolsSheetOpen(false)}
             className="fixed inset-0"
           />
-          <div className="relative w-full max-w-md bg-white rounded-t-3xl border border-slate-200 p-5 pb-8 flex flex-col gap-3 z-10 animate-in slide-in-from-bottom duration-150">
+          <div className="relative w-full max-w-md bg-white rounded-t-[32px] border border-slate-200/80 shadow-2xl p-5 pb-8 flex flex-col gap-3 z-10 animate-in slide-in-from-bottom duration-150">
+            <div className="w-9 h-1 rounded-full bg-slate-300 mx-auto -mt-1 mb-2" />
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <span className="text-sm font-bold text-slate-900">附加能力与知识库</span>
               <button
