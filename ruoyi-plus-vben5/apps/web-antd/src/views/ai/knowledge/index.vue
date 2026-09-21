@@ -1,79 +1,260 @@
 <template>
   <div class="p-4 space-y-4">
-    <!-- 顶部卡片：知识库概览与操作 -->
-    <a-card title="📚 企业级知识库中心 (PostgreSQL pgvector)" :bordered="false">
-      <template #extra>
-        <a-space>
-          <a-button type="primary" @click="openCreateModal">
-            + 新建知识库
+    <!-- =================================================================================== -->
+    <!-- 模式一：知识库列表概览页面 (viewMode === 'list')                                     -->
+    <!-- =================================================================================== -->
+    <template v-if="viewMode === 'list'">
+      <a-card title="📚 企业级知识库中心 (PostgreSQL pgvector)" :bordered="false" class="shadow-xs rounded-xl">
+        <template #extra>
+          <a-space>
+            <a-button type="primary" @click="openCreateModal">
+              + 新建知识库
+            </a-button>
+            <a-button @click="loadData">
+              刷新
+            </a-button>
+          </a-space>
+        </template>
+
+        <!-- 知识库表格 (设置 :pagination="false", 采用底部吸底独立分页栏) -->
+        <a-table
+          :columns="columns"
+          :data-source="kbList"
+          :loading="loading"
+          row-key="id"
+          :pagination="false"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'name'">
+              <div
+                class="font-medium text-base text-zinc-900 dark:text-zinc-100 flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors"
+                @click="enterDetailPage(record)"
+                title="点击进入独立页面维护知识库与切片片段"
+              >
+                <span>📖 {{ record.name }}</span>
+                <a-tag v-if="record.isPublic === '1'" color="blue">公开</a-tag>
+                <a-tag v-else color="default">私有</a-tag>
+              </div>
+              <div class="text-xs text-zinc-400 mt-1 line-clamp-1">
+                {{ record.description || '暂无描述' }}
+              </div>
+            </template>
+
+            <template v-else-if="column.key === 'config'">
+              <div class="text-xs space-y-0.5 text-zinc-500">
+                <div>切片大小: <span class="font-mono text-zinc-800 dark:text-zinc-200">{{ record.chunkSize || 500 }}</span> 字符</div>
+                <div>重叠字数: <span class="font-mono text-zinc-800 dark:text-zinc-200">{{ record.chunkOverlap || 50 }}</span> 字符</div>
+              </div>
+            </template>
+
+            <template v-else-if="column.key === 'status'">
+              <a-tag :color="record.status === '0' ? 'success' : 'error'">
+                {{ record.status === '0' ? '正常' : '已停用' }}
+              </a-tag>
+            </template>
+
+            <template v-else-if="column.key === 'action'">
+              <a-space>
+                <a-button type="primary" ghost size="small" @click="enterDetailPage(record)">
+                  知识维护 / 片段管理
+                </a-button>
+                <a-button type="link" size="small" @click="openSearchDrawer(record)">
+                  检索沙盒
+                </a-button>
+                <a-button type="link" size="small" @click="openEditModal(record)">
+                  编辑
+                </a-button>
+                <a-popconfirm title="确定删除该知识库？将同时清理所有关联切片！" @confirm="handleDelete(record.id)">
+                  <a-button type="link" size="small" danger>
+                    删除
+                  </a-button>
+                </a-popconfirm>
+              </a-space>
+            </template>
+          </template>
+        </a-table>
+
+        <!-- 知识库列表：底部固定吸底分页栏 -->
+        <div class="sticky bottom-0 z-10 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md px-4 py-3 border-t border-zinc-200/80 dark:border-zinc-800 flex justify-between items-center shadow-xs mt-3 -mx-6 -mb-6 rounded-b-xl">
+          <div class="text-xs text-zinc-500">
+            共 <span class="font-bold text-zinc-800 dark:text-zinc-200">{{ pagination.total }}</span> 个知识库，当前第 {{ pagination.current }} / {{ Math.ceil(pagination.total / pagination.pageSize) || 1 }} 页
+          </div>
+          <a-pagination
+            v-model:current="pagination.current"
+            v-model:page-size="pagination.pageSize"
+            :total="pagination.total"
+            :show-size-changer="true"
+            :show-quick-jumper="true"
+            :page-size-options="['10', '20', '50']"
+            size="small"
+            @change="loadData"
+          />
+        </div>
+      </a-card>
+    </template>
+
+    <!-- =================================================================================== -->
+    <!-- 模式二：知识库片段维护与编辑独立页面 (viewMode === 'detail', 彻底告别侧边窄抽屉)        -->
+    <!-- =================================================================================== -->
+    <template v-else-if="viewMode === 'detail'">
+      <!-- 面包屑返回条 -->
+      <div class="flex items-center justify-between bg-white dark:bg-zinc-900 px-4 py-2.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800 shadow-xs">
+        <div class="flex items-center gap-2">
+          <a-button type="link" @click="backToList" class="p-0 font-semibold text-sm flex items-center gap-1.5 text-blue-600 hover:text-blue-700">
+            ← 返回知识库列表
           </a-button>
-          <a-button @click="loadData">
+          <span class="text-zinc-300 dark:text-zinc-700">/</span>
+          <span class="text-xs font-bold text-zinc-700 dark:text-zinc-300">
+            📖 {{ activeKb?.name }} · 知识片段与问答维护
+          </span>
+        </div>
+
+        <a-space>
+          <a-button type="primary" @click="openAddKnowledgeModal('qa')">
+            + 补充 QA 问答对
+          </a-button>
+          <a-button @click="openAddKnowledgeModal('text')">
+            + 补充长文本切片
+          </a-button>
+          <a-button @click="openSearchDrawer(activeKb!)">
+            检索沙盒测试
+          </a-button>
+          <a-button @click="loadChunks">
             刷新
           </a-button>
         </a-space>
-      </template>
+      </div>
 
-      <!-- 知识库表格 -->
-      <a-table
-        :columns="columns"
-        :data-source="kbList"
-        :loading="loading"
-        row-key="id"
-        :pagination="pagination"
-        @change="handleTableChange"
-      >
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'name'">
-            <div
-              class="font-medium text-base text-zinc-900 dark:text-zinc-100 flex items-center gap-2 cursor-pointer hover:text-blue-600 transition-colors"
-              @click="openChunkDrawer(record)"
-              title="点击进入知识库补充知识与维护切片"
-            >
-              <span>📖 {{ record.name }}</span>
-              <a-tag v-if="record.isPublic === '1'" color="blue">公开</a-tag>
-              <a-tag v-else color="default">私有</a-tag>
-            </div>
-            <div class="text-xs text-zinc-400 mt-1 line-clamp-1">
-              {{ record.description || '暂无描述' }}
-            </div>
-          </template>
+      <!-- 知识库核心信息看板条 -->
+      <div class="bg-white dark:bg-zinc-900 p-4 rounded-xl border border-zinc-200/80 dark:border-zinc-800 shadow-xs flex flex-wrap items-center justify-between gap-4">
+        <div class="space-y-1">
+          <div class="flex items-center gap-2.5">
+            <h2 class="text-base font-bold text-zinc-900 dark:text-zinc-100 m-0">
+              {{ activeKb?.name }}
+            </h2>
+            <a-tag v-if="activeKb?.isPublic === '1'" color="blue">全员公开检索</a-tag>
+            <a-tag v-else color="default">私有权限</a-tag>
+            <a-tag color="purple">PostgreSQL pgvector (1536维)</a-tag>
+          </div>
+          <p class="text-xs text-zinc-500 m-0 line-clamp-2 max-w-2xl">
+            {{ activeKb?.description || '暂无详细描述信息' }}
+          </p>
+        </div>
 
-          <template v-else-if="column.key === 'config'">
-            <div class="text-xs space-y-0.5 text-zinc-500">
-              <div>切片大小: <span class="font-mono text-zinc-800 dark:text-zinc-200">{{ record.chunkSize || 500 }}</span> 字符</div>
-              <div>重叠字数: <span class="font-mono text-zinc-800 dark:text-zinc-200">{{ record.chunkOverlap || 50 }}</span> 字符</div>
-            </div>
-          </template>
+        <div class="flex items-center gap-6 text-xs text-zinc-500 font-mono">
+          <div>切片容量: <span class="font-bold text-zinc-800 dark:text-zinc-200">{{ activeKb?.chunkSize || 500 }}</span> 字符</div>
+          <div>重叠跨度: <span class="font-bold text-zinc-800 dark:text-zinc-200">{{ activeKb?.chunkOverlap || 50 }}</span> 字符</div>
+          <div>总知识条目: <span class="font-bold text-blue-600 text-sm">{{ chunkPagination.total }}</span> 条</div>
+        </div>
+      </div>
 
-          <template v-else-if="column.key === 'status'">
-            <a-tag :color="record.status === '0' ? 'success' : 'error'">
-              {{ record.status === '0' ? '正常' : '已停用' }}
-            </a-tag>
-          </template>
+      <!-- 切片筛选工具栏与主体表格卡片 -->
+      <a-card :bordered="false" class="shadow-xs rounded-xl">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-zinc-100 dark:border-zinc-800">
+          <div class="flex items-center gap-2">
+            <a-radio-group v-model:value="chunkFilterType" button-style="solid" size="small" @change="handleFilterChange">
+              <a-radio-button value="all">全部类型 ({{ chunkPagination.total }})</a-radio-button>
+              <a-radio-button value="qa">仅看 QA 问答对</a-radio-button>
+              <a-radio-button value="text">仅看长文本切片</a-radio-button>
+            </a-radio-group>
+          </div>
 
-          <template v-else-if="column.key === 'action'">
-            <a-space>
-              <a-button type="link" size="small" @click="openChunkDrawer(record)">
-                知识补充 / 明细
-              </a-button>
-              <a-button type="link" size="small" @click="openSearchDrawer(record)">
-                检索沙盒
-              </a-button>
-              <a-button type="link" size="small" @click="openEditModal(record)">
-                编辑
-              </a-button>
-              <a-popconfirm title="确定删除该知识库？将同时清理所有关联切片！" @confirm="handleDelete(record.id)">
-                <a-button type="link" size="small" danger>
-                  删除
+          <div class="flex items-center gap-2">
+            <a-input-search
+              v-model:value="chunkSearchKeyword"
+              placeholder="搜索标准问题 (Q) 或 正文内容关键字..."
+              allow-clear
+              size="small"
+              class="w-80"
+              @search="handleSearchChunks"
+              @pressEnter="handleSearchChunks"
+            />
+          </div>
+        </div>
+
+        <!-- 切片独立页面表格 (采用全屏沉浸式宽度与独立吸底分页) -->
+        <a-table
+          :columns="chunkColumns"
+          :data-source="chunkList"
+          :loading="chunkLoading"
+          row-key="id"
+          size="middle"
+          :pagination="false"
+        >
+          <template #bodyCell="{ column, record, index }">
+            <template v-if="column.key === 'id'">
+              <span class="text-xs font-mono text-zinc-400">#{{ (chunkPagination.current - 1) * chunkPagination.pageSize + index + 1 }}</span>
+            </template>
+
+            <template v-else-if="column.key === 'chunkType'">
+              <a-tag v-if="record.chunkType === 'qa'" color="purple" class="font-semibold">
+                QA 问答对
+              </a-tag>
+              <a-tag v-else color="blue" class="font-semibold">
+                文本切片
+              </a-tag>
+            </template>
+
+            <template v-else-if="column.key === 'titleOrQuestion'">
+              <div v-if="record.chunkType === 'qa'" class="font-medium text-sm text-purple-900 dark:text-purple-300">
+                <span class="font-bold text-purple-600 mr-1.5">Q:</span>
+                <span class="select-text">{{ record.question || '-' }}</span>
+              </div>
+              <div v-else class="text-xs text-zinc-600 dark:text-zinc-400 font-mono">
+                {{ record.question || `#${record.chunkOrder || 1} 文本片段` }}
+              </div>
+            </template>
+
+            <template v-else-if="column.key === 'content'">
+              <div class="text-xs leading-relaxed max-h-32 overflow-y-auto whitespace-pre-wrap font-mono bg-zinc-50 dark:bg-zinc-900/90 p-3 rounded-xl border border-zinc-200/80 dark:border-zinc-800 select-text">
+                <span v-if="record.chunkType === 'qa'" class="font-bold text-emerald-600 mr-1.5">A:</span>
+                {{ record.content }}
+              </div>
+            </template>
+
+            <template v-else-if="column.key === 'tokenCount'">
+              <span class="text-xs font-mono text-zinc-500">{{ record.tokenCount || record.content?.length || 0 }} 字符</span>
+            </template>
+
+            <template v-else-if="column.key === 'createTime'">
+              <span class="text-xs text-zinc-400 font-mono">{{ formatDateTime(record.createTime) }}</span>
+            </template>
+
+            <template v-else-if="column.key === 'action'">
+              <a-space>
+                <a-button type="link" size="small" @click="openEditChunkModal(record)">
+                  编辑
                 </a-button>
-              </a-popconfirm>
-            </a-space>
+                <a-popconfirm title="确定删除该切片条目？" @confirm="handleDeleteChunk(record.id)">
+                  <a-button type="link" size="small" danger>
+                    删除
+                  </a-button>
+                </a-popconfirm>
+              </a-space>
+            </template>
           </template>
-        </template>
-      </a-table>
-    </a-card>
+        </a-table>
 
-    <!-- 弹窗：新建 / 编辑知识库 -->
+        <!-- 切片独立页面：底部吸底固定分页栏 (Sticky Bottom Pagination) -->
+        <div class="sticky bottom-0 z-10 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md px-4 py-3 border-t border-zinc-200/80 dark:border-zinc-800 flex justify-between items-center shadow-xs mt-3 -mx-6 -mb-6 rounded-b-xl">
+          <div class="text-xs text-zinc-500">
+            共 <span class="font-bold text-zinc-800 dark:text-zinc-200">{{ chunkPagination.total }}</span> 条知识切片，当前第 {{ chunkPagination.current }} / {{ Math.ceil(chunkPagination.total / chunkPagination.pageSize) || 1 }} 页
+          </div>
+          <a-pagination
+            v-model:current="chunkPagination.current"
+            v-model:page-size="chunkPagination.pageSize"
+            :total="chunkPagination.total"
+            :show-size-changer="true"
+            :show-quick-jumper="true"
+            :page-size-options="['10', '20', '50', '100']"
+            size="small"
+            @change="loadChunks"
+          />
+        </div>
+      </a-card>
+    </template>
+
+    <!-- 弹窗：新建 / 编辑知识库元数据 -->
     <a-modal
       v-model:open="modalVisible"
       :title="editingId ? '编辑知识库' : '新建知识库'"
@@ -104,159 +285,50 @@
       </a-form>
     </a-modal>
 
-    <!-- 抽屉：切片管理与知识补充 -->
-    <a-drawer
-      v-model:open="chunkDrawerVisible"
-      :title="`知识库维护与知识补充 - ${activeKb?.name || ''}`"
-      width="860px"
-    >
-      <div class="space-y-4">
-        <!-- 头部概览与补充操作按钮 -->
-        <div class="flex justify-between items-center bg-zinc-50 dark:bg-zinc-800/50 p-3.5 rounded-xl border border-zinc-200 dark:border-zinc-700">
-          <div>
-            <div class="text-sm font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-              <span>📖 {{ activeKb?.name }}</span>
-              <a-tag color="blue">已收录 {{ chunkPagination.total }} 条</a-tag>
-            </div>
-            <div class="text-xs text-zinc-400 mt-1">
-              切片大小: {{ activeKb?.chunkSize || 500 }} 字符 · 重叠: {{ activeKb?.chunkOverlap || 50 }} 字符 · pgvector 1536维
-            </div>
-          </div>
-
-          <a-space>
-            <a-button type="primary" @click="openAddKnowledgeModal('qa')">
-              + 补充 QA 问答对
-            </a-button>
-            <a-button @click="openAddKnowledgeModal('text')">
-              + 补充长文本切片
-            </a-button>
-          </a-space>
-        </div>
-
-        <!-- 过滤工具栏 -->
-        <div class="flex items-center justify-between gap-4">
-          <a-radio-group v-model:value="chunkFilterType" button-style="solid" size="small">
-            <a-radio-button value="all">全部 ({{ chunkList.length }})</a-radio-button>
-            <a-radio-button value="qa">仅看 QA 问答对</a-radio-button>
-            <a-radio-button value="text">仅看文本切片</a-radio-button>
-          </a-radio-group>
-
-          <a-input-search
-            v-model:value="chunkSearchKeyword"
-            placeholder="搜索问答或切片内容..."
-            allow-clear
-            size="small"
-            class="max-w-xs"
-          />
-        </div>
-
-        <a-table
-          :columns="chunkColumns"
-          :data-source="filteredChunkList"
-          :loading="chunkLoading"
-          row-key="id"
-          size="small"
-          :pagination="chunkPagination"
-          @change="handleChunkTableChange"
-        >
-          <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'chunkType'">
-              <a-tag v-if="record.chunkType === 'qa'" color="purple">
-                QA 问答对
-              </a-tag>
-              <a-tag v-else color="blue">
-                文本切片
-              </a-tag>
-            </template>
-
-            <template v-else-if="column.key === 'titleOrQuestion'">
-              <div v-if="record.chunkType === 'qa'" class="font-medium text-xs text-purple-900 dark:text-purple-300">
-                <span class="font-bold mr-1">Q:</span>{{ record.question || '-' }}
-              </div>
-              <div v-else class="text-xs text-zinc-500 font-mono">
-                #{{ record.chunkOrder }} 文本切片
-              </div>
-            </template>
-
-            <template v-else-if="column.key === 'content'">
-              <div class="text-xs leading-relaxed max-h-24 overflow-y-auto whitespace-pre-wrap font-mono bg-zinc-50 dark:bg-zinc-900 p-2 rounded border border-zinc-200 dark:border-zinc-800">
-                <span v-if="record.chunkType === 'qa'" class="font-bold text-zinc-700 dark:text-zinc-300 mr-1">A:</span>
-                {{ record.content }}
-              </div>
-            </template>
-
-            <template v-else-if="column.key === 'action'">
-              <a-popconfirm title="确定删除该切片？" @confirm="handleDeleteChunk(record.id)">
-                <a-button type="link" size="small" danger>删除</a-button>
-              </a-popconfirm>
-            </template>
-          </template>
-        </a-table>
-      </div>
-    </a-drawer>
-
-    <!-- 弹窗：录入并补充知识内容 (支持 QA 问答对与长文本切片) -->
+    <!-- 弹窗：新增知识内容 (QA问答对 / 长文本切片) -->
     <a-modal
       v-model:open="chunkModalVisible"
-      :title="`补充知识内容 - ${chunkFormData.chunkType === 'qa' ? 'QA 问答对 (精准匹配)' : '长文本切片 (自动分块)'}`"
-      width="680px"
-      :z-index="2000"
-      :wrap-class-name="'z-[2000]'"
-      ok-text="确认入库"
-      cancel-text="取消"
+      :title="chunkFormData.chunkType === 'qa' ? '➕ 录入 QA 问答对词条' : '➕ 补充长文本切片知识'"
       @ok="handleDoChunk"
       :confirm-loading="chunking"
+      width="680px"
     >
-      <a-form layout="vertical" :model="chunkFormData" class="mt-2">
-        <a-form-item label="补充类型">
+      <a-form layout="vertical">
+        <a-form-item label="录入知识类型">
           <a-radio-group v-model:value="chunkFormData.chunkType" button-style="solid">
-            <a-radio-button value="qa">QA 问答对 (精准匹配)</a-radio-button>
-            <a-radio-button value="text">长文本切片 (自动分块)</a-radio-button>
+            <a-radio-button value="qa">💬 QA 问答对 (精准匹配推荐)</a-radio-button>
+            <a-radio-button value="text">📄 长文本内容 (自动切片)</a-radio-button>
           </a-radio-group>
         </a-form-item>
 
-        <!-- QA 问答对模式 -->
         <template v-if="chunkFormData.chunkType === 'qa'">
-          <a-form-item label="标准问题 (Q)" required>
-            <template #extra>
-              <span class="text-xs text-purple-600 dark:text-purple-400">
-                ⚡ 仅对问题生成 1536 维语义向量，用户提问语义相近时将以 0.8+ 高精度命中召回。
-              </span>
-            </template>
+          <a-form-item label="标准问题 (Q)" required extra="将单独计算 1536 维向量，大模型提问相似问题时将精准命中召回">
             <a-input
               v-model:value="chunkFormData.question"
-              placeholder="例如：我女朋友叫什么？ / 公司上下班作息时间是什么？"
+              placeholder="例如：我女朋友是谁？/ 公司的年假如何计算？"
             />
           </a-form-item>
-
-          <a-form-item label="标准回答 (A)" required>
-            <template #extra>
-              <span class="text-xs text-zinc-400">
-                检索命中后将作为确定性记忆事实注入大模型进行回复。
-              </span>
-            </template>
+          <a-form-item label="标准答案 (A)" required extra="大模型命中本词条后将直接作为事实依据回答用户">
             <a-textarea
               v-model:value="chunkFormData.content"
-              placeholder="输入标准、准确的解答内容..."
-              :rows="6"
+              placeholder="例如：你女朋友是王宇静。/ 员工入职满一年享有 5 天带薪年假..."
+              :rows="5"
             />
           </a-form-item>
         </template>
 
-        <!-- 长文本切片模式 -->
         <template v-else>
-          <a-form-item label="文档/片段标题 (可选)">
-            <a-input v-model:value="chunkFormData.title" placeholder="如：系统架构规范、员工差旅报销标准" />
+          <a-form-item label="文档 / 切片标题" extra="便于管理与检索结果引用展示">
+            <a-input v-model:value="chunkFormData.title" placeholder="例如：2026年出差差旅报销标准" />
           </a-form-item>
-          <a-form-item label="切片正文文本" required>
-            <template #extra>
-              <span class="text-xs text-zinc-400">
-                系统将按该知识库配置的切片大小 ({{ activeKb?.chunkSize || 500 }}字) 与重叠字数自动滑动窗口切分并写入 pgvector 向量库。
-              </span>
-            </template>
+          <a-form-item
+            label="长文本正文内容"
+            required
+            :extra="`系统将按当前知识库设置（切片大小: ${activeKb?.chunkSize || 500}字符，重叠: ${activeKb?.chunkOverlap || 50}字符）自动切片并生成向量`"
+          >
             <a-textarea
               v-model:value="chunkFormData.content"
-              placeholder="粘贴待切片的文章、规章、方案长文..."
+              placeholder="请粘贴大段技术手册、规章制度、操作规范或产品介绍文本..."
               :rows="8"
             />
           </a-form-item>
@@ -264,62 +336,118 @@
       </a-form>
     </a-modal>
 
-    <!-- 抽屉：pgvector 语义检索沙盒 -->
-    <a-drawer
-      v-model:open="searchDrawerVisible"
-      :title="`pgvector 向量检索沙盒 - ${activeKb?.name || ''}`"
+    <!-- 弹窗：编辑现有切片 / 问答词条 (支持重新计算向量入库) -->
+    <a-modal
+      v-model:open="editChunkModalVisible"
+      :title="editingChunkData.chunkType === 'qa' ? '✏️ 编辑 QA 问答对词条' : '✏️ 编辑知识切片内容'"
+      @ok="handleSaveEditChunk"
+      :confirm-loading="savingChunk"
       width="680px"
     >
+      <a-form layout="vertical">
+        <a-form-item label="切片类型">
+          <a-tag :color="editingChunkData.chunkType === 'qa' ? 'purple' : 'blue'" class="font-bold text-xs">
+            {{ editingChunkData.chunkType === 'qa' ? 'QA 问答对词条' : '普通文本切片' }}
+          </a-tag>
+        </a-form-item>
+
+        <template v-if="editingChunkData.chunkType === 'qa'">
+          <a-form-item label="标准问题 (Q)" required extra="保存后将自动重新生成 1536 维向量并更新 pgvector">
+            <a-input
+              v-model:value="editingChunkData.question"
+              placeholder="输入标准问题..."
+            />
+          </a-form-item>
+          <a-form-item label="标准答案 (A)" required extra="大模型以此答案为知识依据">
+            <a-textarea
+              v-model:value="editingChunkData.content"
+              placeholder="输入标准回答..."
+              :rows="6"
+            />
+          </a-form-item>
+        </template>
+
+        <template v-else>
+          <a-form-item label="标准问题 / 标题 (可选)">
+            <a-input v-model:value="editingChunkData.question" placeholder="切片简要标题或问题描述" />
+          </a-form-item>
+          <a-form-item label="切片正文内容" required extra="保存后将自动重新计算并同步更新向量嵌入">
+            <a-textarea
+              v-model:value="editingChunkData.content"
+              placeholder="切片正文内容..."
+              :rows="7"
+            />
+          </a-form-item>
+        </template>
+      </a-form>
+    </a-modal>
+
+    <!-- 抽屉：语义向量检索沙盒测试 -->
+    <a-drawer
+      v-model:open="searchDrawerVisible"
+      :title="`pgvector 语义向量检索沙盒 - ${activeKb?.name || ''}`"
+      width="540px"
+    >
       <div class="space-y-4">
-        <div class="p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 rounded-lg text-xs text-blue-700 dark:text-blue-300">
-          💡 本沙盒基于 PostgreSQL pgvector HNSW 余弦相似度索引进行语义匹配，分值越接近 1.0 表示向量夹角余弦越近。
-        </div>
+        <a-alert
+          message="基于 PostgreSQL pgvector HNSW 算法测试当前知识库的语义召回精度"
+          type="info"
+          show-icon
+        />
 
-        <div class="space-y-2">
-          <a-textarea
-            v-model:value="searchQuery"
-            placeholder="输入您想检索的问题或关键词..."
-            :rows="3"
-            @press-enter.prevent="handleSearch"
-          />
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-4 text-xs text-zinc-500">
-              <span class="flex items-center gap-1">Top-K:
-                <a-input-number v-model:value="searchTopK" :min="1" :max="20" size="small" />
-              </span>
-              <span class="flex items-center gap-1">最低相似度:
-                <a-input-number v-model:value="searchMinScore" :min="0" :max="1" :step="0.05" size="small" />
-              </span>
-            </div>
-            <a-button type="primary" :loading="searching" @click="handleSearch">
-              🔍 执行向量检索
-            </a-button>
+        <a-form layout="vertical">
+          <a-form-item label="检索测试提问 (模拟用户输入)">
+            <a-textarea
+              v-model:value="searchQuery"
+              placeholder="例如：我女朋友叫什么？/ 报销需要什么发票？"
+              :rows="3"
+            />
+          </a-form-item>
+          <div class="grid grid-cols-2 gap-4">
+            <a-form-item label="Top-K 返回数">
+              <a-input-number v-model:value="searchTopK" :min="1" :max="10" class="w-full" />
+            </a-form-item>
+            <a-form-item label="最小相似度门槛">
+              <a-input-number v-model:value="searchMinScore" :min="0" :max="1" :step="0.05" class="w-full" />
+            </a-form-item>
           </div>
-        </div>
+          <a-button type="primary" block :loading="searching" @click="handleSearch">
+            执行语义召回
+          </a-button>
+        </a-form>
+        
+        <div v-if="searched" class="space-y-3 pt-2">
+          <div class="text-xs font-semibold text-zinc-500 flex justify-between">
+            <span>召回切片结果 ({{ searchResults.length }})</span>
+            <span>余弦相似度得分</span>
+          </div>
 
-        <div v-if="searchResults.length > 0" class="space-y-3 pt-2">
-          <div class="text-xs font-medium text-zinc-500">命中结果 ({{ searchResults.length }} 条)：</div>
+          <div v-if="searchResults.length === 0" class="text-center py-8 text-zinc-400 text-xs">
+            未命中任何相似度 >= {{ searchMinScore }} 的切片内容
+          </div>
+
           <div
             v-for="(item, idx) in searchResults"
-            :key="item.id || idx"
-            class="p-3.5 bg-white dark:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700 shadow-sm space-y-2"
+            :key="idx"
+            class="p-3 bg-zinc-50 dark:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-zinc-700 space-y-1.5 text-xs"
           >
-            <div class="flex items-center justify-between">
-              <span class="font-mono text-xs font-semibold px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200">
-                #{{ idx + 1 }} 切片 (Order: {{ item.chunkOrder }})
+            <div class="flex justify-between items-center">
+              <span class="font-bold text-blue-600">
+                #{{ idx + 1 }}
+                <a-tag v-if="item.chunkType === 'qa'" color="purple" class="ml-1">QA问答</a-tag>
+                <a-tag v-else color="blue" class="ml-1">文本切片</a-tag>
               </span>
-              <a-tag :color="item.score && item.score >= 0.7 ? 'success' : item.score && item.score >= 0.5 ? 'processing' : 'warning'">
-                相似度得分: {{ item.score ?? 'N/A' }}
+              <a-tag color="cyan" class="font-mono font-bold">
+                相似度: {{ ((item.score || 0) * 100).toFixed(1) }}%
               </a-tag>
             </div>
-            <div class="text-xs text-zinc-700 dark:text-zinc-300 leading-relaxed font-mono whitespace-pre-wrap">
+            <div v-if="item.question" class="text-purple-700 dark:text-purple-300 font-semibold">
+              Q: {{ item.question }}
+            </div>
+            <div class="text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap font-mono text-[11px] leading-relaxed bg-white dark:bg-zinc-900 p-2 rounded border border-zinc-100 dark:border-zinc-800">
               {{ item.content }}
             </div>
           </div>
-        </div>
-
-        <div v-else-if="searched" class="text-center py-8 text-zinc-400 text-xs">
-          未检索到符合相似度门槛的切片内容
         </div>
       </div>
     </a-drawer>
@@ -327,8 +455,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue';
-
+import { ref, reactive, onMounted } from 'vue';
 import { message as antdMessage } from 'antdv-next';
 
 const message = {
@@ -354,40 +481,45 @@ const message = {
     }
   },
 };
-
 import {
   getKnowledgeBasesApi,
   createKnowledgeBaseApi,
   updateKnowledgeBaseApi,
   deleteKnowledgeBaseApi,
-  chunkTextApi,
   getKnowledgeChunksApi,
   deleteKnowledgeChunkApi,
+  updateKnowledgeChunkApi,
+  chunkTextApi,
   searchKnowledgeChunksApi,
   type KnowledgeBase,
   type KnowledgeChunk,
 } from '#/api/ai/knowledge';
 
-const loading = ref(false);
+// 页面模式: 'list' (知识库总览) 或 'detail' (知识库片段维护与编辑独立工作台)
+const viewMode = ref<'list' | 'detail'>('list');
+
+// 知识库列表表格配置
+const columns = [
+  { title: '知识库名称', key: 'name', width: 280 },
+  { title: '切片规则', key: 'config', width: 180 },
+  { title: '状态', key: 'status', width: 100 },
+  { title: '创建时间', dataIndex: 'createTime', key: 'createTime', width: 180 },
+  { title: '操作', key: 'action', width: 260, fixed: 'right' },
+];
+
 const kbList = ref<KnowledgeBase[]>([]);
+const loading = ref(false);
 const pagination = reactive({
   current: 1,
   pageSize: 10,
   total: 0,
 });
 
-const columns = [
-  { title: '知识库名称', key: 'name', width: 280 },
-  { title: '切片配置', key: 'config', width: 180 },
-  { title: '状态', key: 'status', width: 100 },
-  { title: '创建时间', dataIndex: 'createTime', width: 180 },
-  { title: '操作', key: 'action', width: 280 },
-];
-
+// 新建/编辑知识库弹窗
 const modalVisible = ref(false);
-const editingId = ref<number | null>(null);
 const saving = ref(false);
-const formData = reactive<KnowledgeBase>({
+const editingId = ref<number | null>(null);
+const formData = reactive({
   name: '',
   description: '',
   chunkSize: 500,
@@ -396,43 +528,31 @@ const formData = reactive<KnowledgeBase>({
   status: '0',
 });
 
-// 切片与知识明细
+// 当前正在查看/维护的知识库
 const activeKb = ref<KnowledgeBase | null>(null);
-const chunkDrawerVisible = ref(false);
-const chunkLoading = ref(false);
+
+// 切片独立页面表格配置
+const chunkColumns = [
+  { title: '#', key: 'id', width: 60 },
+  { title: '类型', key: 'chunkType', width: 110 },
+  { title: '标题 / 标准问题 (Q)', key: 'titleOrQuestion', width: 260 },
+  { title: '知识正文 / 标准回答 (A)', key: 'content', ellipsis: false },
+  { title: '字数', key: 'tokenCount', width: 90 },
+  { title: '录入时间', key: 'createTime', width: 160 },
+  { title: '操作', key: 'action', width: 130, fixed: 'right' },
+];
+
 const chunkList = ref<KnowledgeChunk[]>([]);
+const chunkLoading = ref(false);
+const chunkFilterType = ref<'all' | 'qa' | 'text'>('all');
+const chunkSearchKeyword = ref('');
 const chunkPagination = reactive({
   current: 1,
   pageSize: 10,
   total: 0,
 });
 
-const chunkFilterType = ref<'all' | 'qa' | 'text'>('all');
-const chunkSearchKeyword = ref('');
-
-const filteredChunkList = computed(() => {
-  return chunkList.value.filter((item) => {
-    if (chunkFilterType.value === 'qa' && item.chunkType !== 'qa') return false;
-    if (chunkFilterType.value === 'text' && item.chunkType === 'qa') return false;
-    if (chunkSearchKeyword.value.trim()) {
-      const kw = chunkSearchKeyword.value.trim().toLowerCase();
-      const matchQ = item.question?.toLowerCase().includes(kw);
-      const matchC = item.content?.toLowerCase().includes(kw);
-      return matchQ || matchC;
-    }
-    return true;
-  });
-});
-
-const chunkColumns = [
-  { title: '序号', dataIndex: 'chunkOrder', width: 65 },
-  { title: '类型', key: 'chunkType', width: 105 },
-  { title: '问题 / 标题', key: 'titleOrQuestion', width: 220 },
-  { title: '切片/答案内容', key: 'content' },
-  { title: '字数', dataIndex: 'tokenCount', width: 75 },
-  { title: '操作', key: 'action', width: 75 },
-];
-
+// 录入新切片/QA弹窗
 const chunkModalVisible = ref(false);
 const chunking = ref(false);
 const chunkFormData = reactive({
@@ -442,11 +562,21 @@ const chunkFormData = reactive({
   content: '',
 });
 
-// 检索沙盒
+// 编辑切片/QA弹窗
+const editChunkModalVisible = ref(false);
+const savingChunk = ref(false);
+const editingChunkData = reactive({
+  id: 0,
+  chunkType: 'qa',
+  question: '',
+  content: '',
+});
+
+// 检索沙盒状态
 const searchDrawerVisible = ref(false);
 const searchQuery = ref('');
 const searchTopK = ref(5);
-const searchMinScore = ref(0.2);
+const searchMinScore = ref(0.3);
 const searching = ref(false);
 const searched = ref(false);
 const searchResults = ref<KnowledgeChunk[]>([]);
@@ -454,6 +584,11 @@ const searchResults = ref<KnowledgeChunk[]>([]);
 onMounted(() => {
   loadData();
 });
+
+function formatDateTime(val?: string) {
+  if (!val) return '-';
+  return val.replace('T', ' ').slice(0, 19);
+}
 
 async function loadData() {
   loading.value = true;
@@ -469,12 +604,6 @@ async function loadData() {
   } finally {
     loading.value = false;
   }
-}
-
-function handleTableChange(pag: any) {
-  pagination.current = pag.current;
-  pagination.pageSize = pag.pageSize;
-  loadData();
 }
 
 function openCreateModal() {
@@ -533,22 +662,29 @@ async function handleDelete(id?: number) {
   }
 }
 
-// 切片抽屉与知识补充
-function openChunkDrawer(record: KnowledgeBase) {
+// 导航进入知识库片段维护独立页面 (彻底告别抽屉)
+function enterDetailPage(record: KnowledgeBase) {
   activeKb.value = record;
   chunkPagination.current = 1;
   chunkFilterType.value = 'all';
   chunkSearchKeyword.value = '';
-  chunkDrawerVisible.value = true;
+  viewMode.value = 'detail';
   loadChunks();
 }
 
-function openAddKnowledgeModal(type: 'qa' | 'text' = 'qa') {
-  chunkFormData.chunkType = type;
-  chunkFormData.question = '';
-  chunkFormData.title = '';
-  chunkFormData.content = '';
-  chunkModalVisible.value = true;
+function backToList() {
+  viewMode.value = 'list';
+  loadData();
+}
+
+function handleFilterChange() {
+  chunkPagination.current = 1;
+  loadChunks();
+}
+
+function handleSearchChunks() {
+  chunkPagination.current = 1;
+  loadChunks();
 }
 
 async function loadChunks() {
@@ -558,6 +694,8 @@ async function loadChunks() {
     const res = await getKnowledgeChunksApi(activeKb.value.id, {
       pageNum: chunkPagination.current,
       pageSize: chunkPagination.pageSize,
+      chunkType: chunkFilterType.value !== 'all' ? chunkFilterType.value : undefined,
+      keyword: chunkSearchKeyword.value.trim() || undefined,
     });
     chunkList.value = res.rows || [];
     chunkPagination.total = res.total || 0;
@@ -568,15 +706,62 @@ async function loadChunks() {
   }
 }
 
-function handleChunkTableChange(pag: any) {
-  chunkPagination.current = pag.current;
-  chunkPagination.pageSize = pag.pageSize;
-  loadChunks();
+function openAddKnowledgeModal(type: 'qa' | 'text' = 'qa') {
+  chunkFormData.chunkType = type;
+  chunkFormData.question = '';
+  chunkFormData.title = '';
+  chunkFormData.content = '';
+  chunkModalVisible.value = true;
+}
+
+// 打开切片/问答词条编辑弹窗
+function openEditChunkModal(record: KnowledgeChunk) {
+  editingChunkData.id = record.id || 0;
+  editingChunkData.chunkType = record.chunkType || 'text';
+  editingChunkData.question = record.question || '';
+  editingChunkData.content = record.content || '';
+  editChunkModalVisible.value = true;
+}
+
+async function handleSaveEditChunk() {
+  if (!editingChunkData.id) return;
+  if (editingChunkData.chunkType === 'qa') {
+    if (!editingChunkData.question?.trim()) {
+      message.warning('请输入标准问题 (Q)');
+      return;
+    }
+    if (!editingChunkData.content?.trim()) {
+      message.warning('请输入标准回答 (A)');
+      return;
+    }
+  } else {
+    if (!editingChunkData.content?.trim()) {
+      message.warning('请输入切片正文文本');
+      return;
+    }
+  }
+
+  savingChunk.value = true;
+  try {
+    await updateKnowledgeChunkApi({
+      id: editingChunkData.id,
+      question: editingChunkData.question.trim(),
+      content: editingChunkData.content.trim(),
+      chunkType: editingChunkData.chunkType,
+    });
+    message.success('知识片段已成功更新并重新计算向量入库');
+    editChunkModalVisible.value = false;
+    loadChunks();
+  } catch (err: any) {
+    message.error(err.message || '更新知识切片失败');
+  } finally {
+    savingChunk.value = false;
+  }
 }
 
 async function handleDoChunk() {
   if (!activeKb.value?.id) {
-    message.error('未绑定有效知识库，请重新打开抽屉');
+    message.error('未绑定有效知识库');
     return;
   }
 

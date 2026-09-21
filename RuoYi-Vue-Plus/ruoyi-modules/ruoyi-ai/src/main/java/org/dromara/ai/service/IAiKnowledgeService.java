@@ -84,6 +84,16 @@ public interface IAiKnowledgeService {
     PageResult<AiKnowledgeChunk> selectChunkList(Long kbId, Long docId, PageQuery pageQuery);
 
     /**
+     * 分页查询切片明细列表 (支持按类型与关键字过滤)
+     */
+    PageResult<AiKnowledgeChunk> selectChunkList(Long kbId, Long docId, String chunkType, String keyword, PageQuery pageQuery);
+
+    /**
+     * 更新单个知识切片/问答词条，并同步重新计算向量入库
+     */
+    boolean updateChunk(Long chunkId, String question, String content, String chunkType);
+
+    /**
      * 单条删除切片
      */
     boolean deleteChunkById(Long id);

@@ -121,8 +121,22 @@ public class AiKnowledgeController extends BaseController {
     public R<PageResult<AiKnowledgeChunk>> listChunks(
         @PathVariable Long kbId,
         @RequestParam(required = false) Long docId,
+        @RequestParam(required = false) String chunkType,
+        @RequestParam(required = false) String keyword,
         PageQuery pageQuery) {
-        return R.ok(knowledgeService.selectChunkList(kbId, docId, pageQuery));
+        return R.ok(knowledgeService.selectChunkList(kbId, docId, chunkType, keyword, pageQuery));
+    }
+
+    /**
+     * 更新知识片段/问答词条，并同步重新计算向量入库
+     */
+    @PutMapping("/chunk")
+    public R<Void> updateChunk(@RequestBody Map<String, Object> params) {
+        Long id = Long.valueOf(params.get("id").toString());
+        String question = params.get("question") != null ? params.get("question").toString() : null;
+        String content = params.get("content") != null ? params.get("content").toString() : null;
+        String chunkType = params.get("chunkType") != null ? params.get("chunkType").toString() : null;
+        return toAjax(knowledgeService.updateChunk(id, question, content, chunkType));
     }
 
     /**

@@ -50,6 +50,24 @@ public interface AiKnowledgeChunkMapper extends BaseMapperPlus<AiKnowledgeChunk,
     int insertChunkWithVector(@Param("chunk") AiKnowledgeChunk chunk, @Param("embedding") String embedding);
 
     /**
+     * 更新切片及向量数据
+     */
+    @org.apache.ibatis.annotations.Update("""
+        <script>
+        UPDATE ai_knowledge_chunk
+        SET content = #{chunk.content},
+            token_count = #{chunk.tokenCount},
+            question = #{chunk.question},
+            chunk_type = #{chunk.chunkType}
+            <if test="embedding != null and embedding != ''">
+                , embedding = #{embedding}::vector
+            </if>
+        WHERE id = #{chunk.id}
+        </script>
+    """)
+    int updateChunkWithVector(@Param("chunk") AiKnowledgeChunk chunk, @Param("embedding") String embedding);
+
+    /**
      * PostgreSQL pgvector HNSW 余弦相似度召回 (1 - (embedding <=> :vector))
      */
     @Select("""

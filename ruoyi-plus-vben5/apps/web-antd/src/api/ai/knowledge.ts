@@ -141,3 +141,15 @@ export function deleteKnowledgeChunkApi(id: number) {
 export function searchKnowledgeChunksApi(data: SearchChunkParams) {
   return alovaInstance.Post<KnowledgeChunk[]>('/ai/knowledge/search', data);
 }
+
+/**
+ * 更新切片 / QA问答对词条并同步重新计算 pgvector 向量
+ */
+export function updateKnowledgeChunkApi(data: {
+  id: number;
+  content: string;
+  question?: string;
+  chunkType?: string;
+}) {
+  return alovaInstance.Put<any>('/ai/knowledge/chunk', data);
+}

@@ -13,6 +13,7 @@ import org.dromara.ai.mapper.AiKnowledgeChunkMapper;
 import org.dromara.ai.mapper.AiKnowledgeDocumentMapper;
 import org.dromara.ai.mapper.AiModelConfigMapper;
 import org.dromara.ai.service.IAiKnowledgeService;
+import org.dromara.common.core.utils.StringUtils;
 import org.dromara.ai.util.VectorUtils;
 import org.dromara.common.core.domain.PageResult;
 import org.dromara.common.mybatis.core.page.PageQuery;
@@ -226,13 +227,67 @@ public class AiKnowledgeServiceImpl implements IAiKnowledgeService {
 
     @Override
     public PageResult<AiKnowledgeChunk> selectChunkList(Long kbId, Long docId, PageQuery pageQuery) {
+        return selectChunkList(kbId, docId, null, null, pageQuery);
+    }
+
+    @Override
+    public PageResult<AiKnowledgeChunk> selectChunkList(Long kbId, Long docId, String chunkType, String keyword, PageQuery pageQuery) {
         LambdaQueryWrapper<AiKnowledgeChunk> lqw = new LambdaQueryWrapper<AiKnowledgeChunk>()
             .eq(AiKnowledgeChunk::getKbId, kbId)
             .eq(docId != null && docId > 0, AiKnowledgeChunk::getDocId, docId)
+            .eq(StringUtils.isNotBlank(chunkType) && !"all".equalsIgnoreCase(chunkType), AiKnowledgeChunk::getChunkType, chunkType)
+            .and(StringUtils.isNotBlank(keyword), w -> w
+                .like(AiKnowledgeChunk::getContent, keyword)
+                .or()
+                .like(AiKnowledgeChunk::getQuestion, keyword))
             .orderByAsc(AiKnowledgeChunk::getChunkOrder)
             .orderByAsc(AiKnowledgeChunk::getId);
         Page<AiKnowledgeChunk> page = chunkMapper.selectPage(pageQuery.build(), lqw);
         return PageResult.build(page.getRecords(), page.getTotal());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean updateChunk(Long chunkId, String question, String content, String chunkType) {
+        AiKnowledgeChunk chunk = chunkMapper.selectById(chunkId);
+        if (chunk == null) {
+            return false;
+        }
+        if (content != null) {
+            chunk.setContent(content.trim());
+            chunk.setTokenCount(content.trim().length());
+        }
+        if (question != null) {
+            chunk.setQuestion(question.trim());
+        }
+        if (chunkType != null && !chunkType.isBlank()) {
+            chunk.setChunkType(chunkType);
+        }
+
+        // 查询 Embedding 模型配置并重新生成向量
+        AiKnowledgeBase kb = baseMapper.selectById(chunk.getKbId());
+        AiModelConfig embConfig = null;
+        if (kb != null && kb.getEmbeddingModelId() != null) {
+            embConfig = modelConfigMapper.selectById(kb.getEmbeddingModelId());
+        }
+        if (embConfig == null) {
+            embConfig = modelConfigMapper.selectOne(new LambdaQueryWrapper<AiModelConfig>()
+                .eq(AiModelConfig::getModelType, "embedding")
+                .eq(AiModelConfig::getStatus, "0")
+                .last("LIMIT 1"));
+        }
+
+        String textToEmbed = "qa".equalsIgnoreCase(chunk.getChunkType()) && StringUtils.isNotBlank(chunk.getQuestion())
+            ? chunk.getQuestion()
+            : chunk.getContent();
+
+        String vectorStr = null;
+        if (StringUtils.isNotBlank(textToEmbed)) {
+            float[] embedding = VectorUtils.generateEmbedding(textToEmbed, embConfig);
+            vectorStr = VectorUtils.toVectorString(embedding);
+        }
+
+        return chunkMapper.updateChunkWithVector(chunk, vectorStr) > 0;
     }
 
     @Override

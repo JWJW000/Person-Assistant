@@ -70,7 +70,7 @@
         :data-source="promptList"
         :loading="loading"
         row-key="id"
-        :pagination="pagination"
+        :pagination="false"
         :scroll="{ x: 1200 }"
         @change="handleTableChange"
       >
@@ -138,6 +138,23 @@
           </template>
         </template>
       </a-table>
+
+      <!-- 底部吸底固定分页栏 (Sticky Bottom Pagination) -->
+      <div class="sticky bottom-0 z-10 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md px-4 py-3 border-t border-zinc-200/80 dark:border-zinc-800 flex justify-between items-center shadow-xs mt-3 -mx-6 -mb-6 rounded-b-xl">
+        <div class="text-xs text-zinc-500">
+          共 <span class="font-bold text-zinc-800 dark:text-zinc-200">{{ pagination.total }}</span> 条提示词模板，当前第 {{ pagination.current }} / {{ Math.ceil(pagination.total / pagination.pageSize) || 1 }} 页
+        </div>
+        <a-pagination
+          v-model:current="pagination.current"
+          v-model:page-size="pagination.pageSize"
+          :total="pagination.total"
+          :show-size-changer="true"
+          :show-quick-jumper="true"
+          :page-size-options="['10', '20', '50']"
+          size="small"
+          @change="loadData"
+        />
+      </div>
     </a-card>
 
     <!-- 新增 / 编辑提示词弹窗 -->
