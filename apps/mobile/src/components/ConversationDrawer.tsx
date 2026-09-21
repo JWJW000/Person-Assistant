@@ -1,5 +1,6 @@
 import React, { FC, useState, useMemo } from 'react';
 import { ConversationItem, useAppStore } from '../store';
+import { ConfirmModal } from './ConfirmModal';
 import {
   SquarePen,
   Search,
@@ -41,6 +42,20 @@ export const ConversationDrawer: FC<ConversationDrawerProps> = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    content: string;
+    confirmText?: string;
+    variant?: 'danger' | 'warning';
+    iconType?: 'logout' | 'delete' | 'reset' | 'warning';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    content: '',
+    onConfirm: () => {},
+  });
 
   // 过滤并按时间分组
   const filteredList = useMemo(() => {
@@ -213,9 +228,15 @@ export const ConversationDrawer: FC<ConversationDrawerProps> = ({
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (confirm(`确定删除会话「${c.title}」吗？`)) {
-                                  onDelete(c.id);
-                                }
+                                setConfirmConfig({
+                                  isOpen: true,
+                                  title: '删除会话',
+                                  content: `确定删除会话「${c.title}」吗？删除后该记录无法恢复。`,
+                                  confirmText: '删除',
+                                  variant: 'danger',
+                                  iconType: 'delete',
+                                  onConfirm: () => onDelete(c.id),
+                                });
                               }}
                               className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
                               title="删除会话"
@@ -308,10 +329,18 @@ export const ConversationDrawer: FC<ConversationDrawerProps> = ({
 
             <button
               onClick={() => {
-                if (confirm('确定退出当前账号吗？')) {
-                  logout();
-                  onClose();
-                }
+                setConfirmConfig({
+                  isOpen: true,
+                  title: '退出登录',
+                  content: '确定退出当前账号吗？退出后需要重新输入账号密码登录。',
+                  confirmText: '退出登录',
+                  variant: 'danger',
+                  iconType: 'logout',
+                  onConfirm: () => {
+                    logout();
+                    onClose();
+                  },
+                });
               }}
               className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
               title="退出登录"
@@ -321,6 +350,17 @@ export const ConversationDrawer: FC<ConversationDrawerProps> = ({
           </div>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={confirmConfig.isOpen}
+        title={confirmConfig.title}
+        content={confirmConfig.content}
+        confirmText={confirmConfig.confirmText}
+        variant={confirmConfig.variant}
+        iconType={confirmConfig.iconType}
+        onConfirm={confirmConfig.onConfirm}
+        onCancel={() => setConfirmConfig((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

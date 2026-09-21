@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../store';
+import { ConfirmModal } from '../components/ConfirmModal';
 import {
   ArrowLeft,
   LogOut,
@@ -29,6 +30,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack }) => {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateStatusText, setUpdateStatusText] = useState('');
   const [updateStatusType, setUpdateStatusType] = useState<'info' | 'success' | 'error' | ''>('');
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
 
   useEffect(() => {
     if (isAndroidApp()) {
@@ -122,11 +124,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack }) => {
             </div>
 
             <button
-              onClick={() => {
-                if (confirm('确定退出当前登录账号吗？')) {
-                  logout();
-                }
-              }}
+              onClick={() => setLogoutModalOpen(true)}
               className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-slate-200 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 text-xs text-slate-600 font-medium transition-all cursor-pointer"
             >
               <LogOut className="w-3.5 h-3.5" />
@@ -249,6 +247,17 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBack }) => {
           </div>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={logoutModalOpen}
+        title="退出登录"
+        content="确定退出当前登录账号吗？退出后需要重新输入账号密码登录。"
+        confirmText="退出登录"
+        variant="danger"
+        iconType="logout"
+        onConfirm={logout}
+        onCancel={() => setLogoutModalOpen(false)}
+      />
     </div>
   );
 };

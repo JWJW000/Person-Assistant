@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAppStore } from '../store';
 import { fetchMyMemory, updateMemory, clearMemory, UserMemoryData } from '../lib/aiApi';
 import { Toast, ToastMessage } from '../components/Toast';
+import { ConfirmModal } from '../components/ConfirmModal';
 import {
   ArrowLeft,
   Brain,
@@ -32,6 +33,7 @@ export const MemoryPage: React.FC<MemoryPageProps> = ({ onBack }) => {
   const [editContent, setEditContent] = useState('');
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [resetModalOpen, setResetModalOpen] = useState(false);
 
   const loadMemory = useCallback(async () => {
     setLoading(true);
@@ -82,8 +84,7 @@ export const MemoryPage: React.FC<MemoryPageProps> = ({ onBack }) => {
     }
   };
 
-  const handleReset = async () => {
-    if (!confirm('确定将该层记忆重置为系统默认配置吗？')) return;
+  const handleConfirmReset = async () => {
     try {
       const success = await clearMemory(serverUrl, accessToken, activeTab);
       if (success) {
@@ -273,7 +274,7 @@ export const MemoryPage: React.FC<MemoryPageProps> = ({ onBack }) => {
             </span>
 
             <button
-              onClick={handleReset}
+              onClick={() => setResetModalOpen(true)}
               className="flex items-center gap-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 px-2 py-1 rounded-lg transition-colors cursor-pointer"
             >
               <RotateCcw className="w-3 h-3" />
@@ -304,6 +305,17 @@ export const MemoryPage: React.FC<MemoryPageProps> = ({ onBack }) => {
           </ul>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={resetModalOpen}
+        title="重置记忆配置"
+        content={`确定将当前「${curTab.title}」恢复为系统默认内容吗？已自定义的条目将被重置。`}
+        confirmText="重置默认"
+        variant="warning"
+        iconType="reset"
+        onConfirm={handleConfirmReset}
+        onCancel={() => setResetModalOpen(false)}
+      />
     </div>
   );
 };

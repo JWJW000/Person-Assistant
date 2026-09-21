@@ -9,6 +9,7 @@ import {
 } from '../lib/aiApi';
 import { loginWithRuoYi } from '../lib/auth';
 import { Toast, ToastMessage } from '../components/Toast';
+import { ConfirmModal } from '../components/ConfirmModal';
 import {
   ArrowLeft,
   Database,
@@ -48,6 +49,7 @@ export const KnowledgePage: React.FC<KnowledgePageProps> = ({ onBack }) => {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [kbDropdownOpen, setKbDropdownOpen] = useState(false);
+  const [deletingChunkId, setDeletingChunkId] = useState<number | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'qa' | 'text'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -268,14 +270,16 @@ export const KnowledgePage: React.FC<KnowledgePageProps> = ({ onBack }) => {
   };
 
   // 删除切片
-  const handleDeleteChunk = async (id: number) => {
-    if (!confirm('确定删除该内容吗？删除后将不再参与智能问答检索。')) return;
+  const confirmDeleteChunk = async () => {
+    if (!deletingChunkId) return;
     try {
-      await deleteKnowledgeChunk(serverUrl, accessToken, id);
-      showToast('success', '内容已删除');
+      await deleteKnowledgeChunk(serverUrl, accessToken, deletingChunkId);
+      showToast('success', '知识内容已删除');
       loadChunks();
     } catch (err: any) {
       showToast('error', '删除失败');
+    } finally {
+      setDeletingChunkId(null);
     }
   };
 
@@ -556,7 +560,7 @@ export const KnowledgePage: React.FC<KnowledgePageProps> = ({ onBack }) => {
                   </div>
 
                   <button
-                    onClick={() => handleDeleteChunk(chunk.id)}
+                    onClick={() => setDeletingChunkId(chunk.id)}
                     className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
                     title="删除"
                   >
@@ -876,6 +880,17 @@ export const KnowledgePage: React.FC<KnowledgePageProps> = ({ onBack }) => {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={deletingChunkId !== null}
+        title="删除知识条目"
+        content="确定删除该知识条目吗？删除后将不再参与智能问答与语义检索。"
+        confirmText="删除"
+        variant="danger"
+        iconType="delete"
+        onConfirm={confirmDeleteChunk}
+        onCancel={() => setDeletingChunkId(null)}
+      />
     </div>
   );
 };
