@@ -248,12 +248,6 @@ const EventCard: React.FC<{ item: PiDisplayItem; serverUrl: string; token: strin
   if (item.kind === 'tool') return <details className="min-w-0 text-sm"><summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-slate-500"><Wrench className="size-4 shrink-0" /><span className="truncate">{({ bash: '执行命令', read: '读取文件', write: '写入文件', edit: '修改文件', ls: '浏览目录', grep: '搜索内容', find: '查找文件' } as Record<string, string>)[item.title || ''] || item.title}</span><span className={cn('text-xs', item.status === '失败' ? 'text-red-600' : 'text-slate-400')}>{item.status}</span><ChevronRight className="ml-auto size-4 shrink-0" /></summary><pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-slate-50 p-3 text-xs leading-relaxed">{output ?? item.text}</pre>{item.outputId && output === null && <button disabled={loading} onClick={() => void loadOutput()} className="min-h-11 text-xs underline">{loading ? '加载中…' : '查看完整输出'}</button>}{error && <p role="alert" className="text-red-600">{error}</p>}</details>;
   if (item.kind === 'error') return <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{item.text}</p>;
   if (item.role === 'user') return <div className="flex justify-end"><p className="max-w-[85%] whitespace-pre-wrap break-words rounded-3xl bg-slate-100 px-4 py-2.5 text-base leading-relaxed text-slate-900">{item.text}</p></div>;
-  if (item.streaming) {
-    return <article aria-label="Pi 回复" className="min-w-0 text-base text-slate-900">
-      <div className="whitespace-pre-wrap break-words leading-7">{item.text || ''}<span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-slate-900 align-middle" /></div>
-      <span role="status" className="text-xs text-slate-400">正在回复…</span>
-    </article>;
-  }
   return <article aria-label="Pi 回复" className="min-w-0 text-base text-slate-900">
     <div className="prose prose-slate max-w-none break-words text-base leading-7 prose-headings:mb-2 prose-headings:mt-4 prose-headings:font-semibold prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-p:my-3 prose-ul:my-3 prose-ol:my-3 prose-li:my-1 prose-pre:m-0 prose-pre:rounded-none prose-pre:bg-transparent prose-pre:p-3 prose-pre:text-slate-800 prose-code:before:content-none prose-code:after:content-none">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
@@ -265,8 +259,9 @@ const EventCard: React.FC<{ item: PiDisplayItem; serverUrl: string; token: strin
         table({ children }) { return <div className="my-4 overflow-x-auto"><table>{children}</table></div>; },
         a({ children, ...props }) { return <a {...props} target="_blank" rel="noreferrer" className="underline underline-offset-2">{children}</a>; },
       }}>{item.text}</ReactMarkdown>
+      {item.streaming && <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-slate-900 align-middle" />}
     </div>
-    <CopyButton text={item.text} label="复制回复" />
+    {item.streaming ? <span role="status" className="text-xs text-slate-400">正在回复…</span> : <CopyButton text={item.text} label="复制回复" />}
   </article>;
 };
 

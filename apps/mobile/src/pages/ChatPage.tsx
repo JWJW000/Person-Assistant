@@ -179,12 +179,6 @@ const MessageItem = React.memo<MessageItemProps>(
                   {activeKbId ? "正在检索知识库并思考..." : "正在深度思考并组织回答..."}
                 </span>
               </div>
-            ) : msg.isStreaming ? (
-              /* P0 性能优化：流式阶段使用纯文本渲染，避免每 45ms 全量重编译 Markdown AST */
-              <div className="whitespace-pre-wrap break-words text-[#0D0D0D] leading-[1.7]">
-                {cleanDisplayContent(msg.content)}
-                <span className="inline-block w-1.5 h-4 ml-0.5 bg-slate-900 animate-pulse align-middle" />
-              </div>
             ) : (
               <div className="prose prose-slate max-w-full overflow-hidden text-[#0D0D0D] break-words [word-break:break-word] prose-p:my-2 prose-headings:my-2.5 prose-pre:my-2">
                 <ReactMarkdown
@@ -228,6 +222,10 @@ const MessageItem = React.memo<MessageItemProps>(
                 >
                   {cleanDisplayContent(msg.content)}
                 </ReactMarkdown>
+
+                {msg.isStreaming && (
+                  <span className="inline-block w-1.5 h-4 ml-0.5 bg-slate-900 animate-pulse align-middle" />
+                )}
               </div>
             )}
 
@@ -667,9 +665,11 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
         ),
       );
       lastFlushTime = Date.now();
-      if (chatContainerRef.current) {
-        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-      }
+      requestAnimationFrame(() => {
+        if (chatContainerRef.current) {
+          chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        }
+      });
     };
 
     await streamAiChat({
