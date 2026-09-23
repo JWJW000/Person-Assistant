@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { type SyntheticEvent, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowUp, Check, ListPlus, SlidersHorizontal, Square } from 'lucide-react';
 import { PiSheet } from './PiSheet';
 import { cn } from '../lib/utils';
@@ -16,7 +16,10 @@ export function PiComposer({ value, onChange, onSend, activeStatus, busy, online
   const disabled = busy || !online || stopping || sendDisabled;
   const hasText = Boolean(value.trim());
   const modeLabel = mode === 'steer' ? '调整当前' : '排队追加';
-  const submit = () => { if (!disabled && hasText) onSend(active ? mode : 'prompt'); };
+  const submit = (e?: SyntheticEvent) => {
+    e?.preventDefault();
+    if (!disabled && hasText) onSend(active ? mode : 'prompt');
+  };
 
   useLayoutEffect(() => {
     const el = textarea.current;
@@ -29,7 +32,7 @@ export function PiComposer({ value, onChange, onSend, activeStatus, busy, online
     <div className="mx-auto max-w-3xl">
       {error && <p role="alert" className="mb-2 rounded-xl bg-red-50 px-3 py-2 text-xs leading-relaxed text-red-600">{error}</p>}
       {!online && <p role="status" className="mb-2 px-2 text-xs text-slate-500">机器已离线，输入会保留，上线后可发送。</p>}
-      <div className="flex items-end gap-1 rounded-3xl border border-slate-200 bg-slate-100 p-1.5 focus-within:border-slate-400">
+      <div className="flex items-end gap-1 rounded-3xl border border-slate-200 bg-slate-100 p-1.5">
         {active && <button type="button" disabled={disabled} aria-label={`选择消息发送方式：${modeLabel}`} aria-haspopup="dialog" aria-expanded={modeOpen} onClick={() => setModeOpen(true)} className="flex size-11 shrink-0 items-center justify-center rounded-full text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-900 disabled:opacity-40">
           {mode === 'steer' ? <SlidersHorizontal className="size-5" /> : <ListPlus className="size-5" />}<span className="sr-only">{modeLabel}</span>
         </button>}
@@ -38,8 +41,8 @@ export function PiComposer({ value, onChange, onSend, activeStatus, busy, online
           placeholder={stopping ? '正在停止…' : active ? (mode === 'steer' ? '告诉 Pi 需要怎样调整…' : '接下来还需要做什么？') : '向 Pi 发送消息'}
           className="block max-h-32 min-h-11 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent px-3 py-2.5 text-base leading-6 text-slate-900 outline-none placeholder:text-slate-400" />
         {busy && <span role="status" className="sr-only">正在提交…</span>}
-        {active && <button type="button" aria-label={stopping ? '正在停止执行' : '停止执行'} disabled={disabled} onClick={() => onSend('stop')} className={cn('flex size-11 shrink-0 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:opacity-40', hasText ? 'bg-white text-slate-700' : 'bg-slate-900 text-white')}><Square className="size-4 fill-current" /></button>}
-        {(!active || hasText) && <button type="button" aria-label={active ? `发送并${modeLabel}` : '发送消息'} disabled={disabled || !hasText} onClick={submit} className="flex size-11 shrink-0 items-center justify-center rounded-full bg-slate-900 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:bg-slate-200 disabled:text-slate-400"><ArrowUp className="size-5" strokeWidth={2.5} /></button>}
+        {active && <button type="button" aria-label={stopping ? '正在停止执行' : '停止执行'} disabled={disabled} onPointerDown={(e) => { e.preventDefault(); if (!disabled) onSend('stop'); }} className={cn('flex size-11 shrink-0 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:opacity-40', hasText ? 'bg-white text-slate-700' : 'bg-slate-900 text-white')}><Square className="size-4 fill-current" /></button>}
+        {(!active || hasText) && <button type="button" aria-label={active ? `发送并${modeLabel}` : '发送消息'} disabled={disabled || !hasText} onPointerDown={(e) => { if (!disabled && hasText) { e.preventDefault(); submit(); } }} className="flex size-11 shrink-0 items-center justify-center rounded-full bg-slate-900 text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:bg-slate-200 disabled:text-slate-400"><ArrowUp className="size-5" strokeWidth={2.5} /></button>}
       </div>
     </div>
     <PiSheet open={modeOpen} onOpenChange={setModeOpen} title="消息发送方式" description="选择这条消息如何交给正在运行的 Pi">

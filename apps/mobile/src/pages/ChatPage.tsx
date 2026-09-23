@@ -366,6 +366,9 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   /** P0 同步防连发锁：在 await 期间也能阻止重复调用 */
   const sendingRef = useRef(false);
+  const inputTextRef = useRef('');
+  const conversationIdRef = useRef(activeConversationId);
+  conversationIdRef.current = activeConversationId;
 
   /** P2 统一用 scrollTop 赋值，去掉 scrollIntoView smooth 打架 */
   const scrollToBottom = useCallback(() => {
@@ -543,16 +546,17 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
   };
 
   // 停止生成
-  const handleStopGeneration = () => {
+  const handleStopGeneration = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+    sendingRef.current = false;
     setLoading(false);
     setMessages((prev) =>
       prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m)),
     );
-  };
+  }, []);
 
   // 重新生成上一条回答
   const handleRegenerate = useCallback((asstMsgId: string | number) => {
@@ -567,25 +571,60 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
-  // 发送消息
-  const handleSendMessage = async (textToSend?: string) => {
-    const text = (textToSend || inputText).trim();
-    if (!text || loading) return;
-    // P0 同步防连发：用 ref 做瞬时锁，防止 await 期间重复进入
+  // 发送消息：先立刻上屏，再建会话/拉流，避免点击后空白等待
+  const handleSendMessage = useCallback(async (textToSend?: string) => {
+    const text = (textToSend || inputTextRef.current).trim();
+    if (!text) return;
     if (sendingRef.current) return;
     sendingRef.current = true;
-    if (!serverUrl || !accessToken) { sendingRef.current = false; return; }
 
-    let targetSessionId = activeConversationId;
+    const token = useAppStore.getState().accessToken;
+    const url = useAppStore.getState().serverUrl;
+    if (!url || !token) {
+      sendingRef.current = false;
+      return;
+    }
+
+    const now = Date.now();
+    const userMsg: DisplayMessage = {
+      id: `u-${now}`,
+      role: 'user',
+      content: text,
+      createTime: new Date().toISOString(),
+    };
+    const asstMsgId = `a-${now}`;
+    const asstMsg: DisplayMessage = {
+      id: asstMsgId,
+      role: 'assistant',
+      content: '',
+      isStreaming: true,
+      createTime: new Date().toISOString(),
+    };
+
+    setLoading(true);
+    setInputText('');
+    inputTextRef.current = '';
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
+    setMessages((prev) => [...prev, userMsg, asstMsg]);
+    requestAnimationFrame(() => {
+      if (chatContainerRef.current) {
+        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+      }
+    });
+
+    let targetSessionId = conversationIdRef.current;
     if (!targetSessionId || targetSessionId === 'default') {
       try {
-        const newSession = await createAiSession(serverUrl, accessToken, text.slice(0, 16) || '新对话');
+        const newSession = await createAiSession(url, token, text.slice(0, 16) || '新对话');
         targetSessionId = newSession.id;
         skipNextLoadRef.current = true;
+        conversationIdRef.current = targetSessionId;
         setActiveConversationId(targetSessionId);
         loadSessions();
       } catch (err: any) {
         sendingRef.current = false;
+        setLoading(false);
+        setMessages((prev) => prev.filter((m) => m.id !== userMsg.id && m.id !== asstMsgId));
         if (
           err.message?.includes('登录') ||
           err.message?.includes('401') ||
@@ -600,35 +639,13 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
       }
     }
 
-    const userMsg: DisplayMessage = {
-      id: `u-${Date.now()}`,
-      role: 'user',
-      content: text,
-      createTime: new Date().toISOString(),
-    };
-
-    const asstMsgId = `a-${Date.now()}`;
-    const asstMsg: DisplayMessage = {
-      id: asstMsgId,
-      role: 'assistant',
-      content: '',
-      isStreaming: true,
-      createTime: new Date().toISOString(),
-    };
-
-    setMessages((prev) => [...prev, userMsg, asstMsg]);
-    setInputText('');
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-    }
-    setLoading(true);
-
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
     let accumulated = '';
     let lastFlushTime = 0;
     let pendingRafId: number | null = null;
+    const { activeKbId: kbId, activeModelId: modelId } = useAppStore.getState();
 
     const flushStreamBuffer = (forceFinal = false) => {
       if (pendingRafId) {
@@ -650,25 +667,23 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
         ),
       );
       lastFlushTime = Date.now();
-      // 在同一渲染帧内快速定位底部，避免平滑滚动打架导致的抖动
       if (chatContainerRef.current) {
         chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
       }
     };
 
     await streamAiChat({
-      serverUrl,
-      token: accessToken,
+      serverUrl: url,
+      token,
       sessionId: targetSessionId,
       message: text,
-      kbId: activeKbId,
-      modelId: activeModelId,
+      kbId,
+      modelId,
       signal: controller.signal,
       onChunk: (chunk) => {
         accumulated += chunk;
-        const now = Date.now();
-        // 节流至每 45ms 刷新一次（约 20FPS），释放 80% 主线程算力，避免频繁重新编译 Markdown 导致的卡顿频闪
-        if (now - lastFlushTime > 45) {
+        const t = Date.now();
+        if (t - lastFlushTime > 80) {
           flushStreamBuffer(false);
         } else if (!pendingRafId) {
           pendingRafId = requestAnimationFrame(() => {
@@ -699,7 +714,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
         abortControllerRef.current = null;
       },
     });
-  };
+  }, [loadSessions, logout, setActiveConversationId]);
 
   const selectedKb = knowledgeBases.find((kb) => kb.id === activeKbId);
   const selectedModel = chatModels.find((m) => m.id === activeModelId);
@@ -743,7 +758,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
       <div ref={chatContainerRef} className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-5">
         {messages.length === 0 ? (
           /* ChatGPT 极简居中欢迎状态 */
-          <div className="chat-welcome-enter flex flex-col items-center justify-center min-h-[62vh] max-w-sm mx-auto text-center px-2">
+          <div className="flex flex-col items-center justify-center min-h-[62vh] max-w-sm mx-auto text-center px-2">
             {/* 极简居中品牌图标 */}
             <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex items-center justify-center mb-5">
               <img
@@ -803,9 +818,9 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
         <div ref={messagesEndRef} />
       </div>
 
-      {/* ChatGPT 标志性底部输入岛 (轻柔浮动无边框质感，紧密贴合软键盘) */}
-      <div className="shrink-0 px-3 pt-1.5 pb-2.5 safe-bottom bg-gradient-to-t from-white via-white/95 to-transparent z-20">
-        <div className="chat-composer max-w-lg mx-auto bg-[#F4F4F4] rounded-[30px] p-1.5 pl-2 flex items-end gap-1.5 border border-black/[0.04] shadow-[0_2px_14px_rgba(0,0,0,0.03)]">
+      {/* 底部输入岛：实色背景，避免渐变 + 键盘高度变化一起重绘 */}
+      <div className="shrink-0 px-3 pt-1.5 pb-2.5 bg-white z-20">
+        <div className="chat-composer max-w-lg mx-auto bg-[#F4F4F4] rounded-[30px] p-1.5 pl-2 flex items-end gap-1.5 border border-black/[0.04]">
           {/* 左侧：+ 工具展开按键 */}
           <button
             type="button"
@@ -822,6 +837,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
             rows={1}
             value={inputText}
             onChange={(e) => {
+              inputTextRef.current = e.target.value;
               setInputText(e.target.value);
               adjustTextareaHeight();
             }}

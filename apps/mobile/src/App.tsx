@@ -14,21 +14,31 @@ export const App: React.FC = () => {
   const piRemoteEnabled = import.meta.env.VITE_PI_REMOTE_ENABLED === 'true';
   const [authMode, setAuthMode] = useState<'login' | 'pair'>('login');
   const [activeOverlay, setActiveOverlay] = useState<'none' | 'knowledge' | 'settings' | 'memory' | 'pi'>('none');
-  // 视口与软键盘弹性适配：利用 CSS 变量直接在合成器层更新，绝不在键盘弹起时高频触发 React 根组件重渲染
+  // 软键盘：只改 CSS 变量，不触发 React 重渲染。rAF 合并多次 resize/scroll，避免键盘动画中的高度频闪。
   useEffect(() => {
-    const syncViewport = () => {
-      if (window.visualViewport) {
-        document.documentElement.style.setProperty('--app-height', `${window.visualViewport.height}px`);
-      }
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    let rafId = 0;
+    const apply = () => {
+      rafId = 0;
+      document.documentElement.style.setProperty('--app-height', `${vv.height}px`);
+      document.documentElement.style.setProperty('--app-offset-top', `${vv.offsetTop}px`);
+      window.scrollTo(0, 0);
+    };
+    const schedule = () => {
+      if (rafId) return;
+      rafId = requestAnimationFrame(apply);
     };
 
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', syncViewport);
-      syncViewport();
-      return () => {
-        window.visualViewport?.removeEventListener('resize', syncViewport);
-      };
-    }
+    apply();
+    vv.addEventListener('resize', schedule);
+    vv.addEventListener('scroll', schedule);
+    return () => {
+      vv.removeEventListener('resize', schedule);
+      vv.removeEventListener('scroll', schedule);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
   }, []);
 
   // 严格要求：进入应用前必须先完成系统账号登录
@@ -60,8 +70,8 @@ export const App: React.FC = () => {
 
   return (
     <div
-      style={{ height: 'var(--app-height, 100dvh)' }}
-      className="fixed inset-x-0 top-0 flex flex-col overflow-hidden bg-white text-slate-900 antialiased selection:bg-slate-900 selection:text-white"
+      style={{ height: 'var(--app-height, 100dvh)', top: 'var(--app-offset-top, 0px)' }}
+      className="fixed inset-x-0 flex flex-col overflow-hidden bg-white text-slate-900 antialiased selection:bg-slate-900 selection:text-white"
     >
       <UpdateBanner />
 

@@ -200,17 +200,9 @@ button,
   animation: ui-slide-up 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* 输入框聚焦效果 */
+/* 输入框保持静态样式，避免 focus-within 改阴影导致键盘弹出时 GPU 闪一下 */
 .chat-composer {
-  transition: background-color 160ms ease,
-              border-color 160ms ease,
-              box-shadow 180ms ease;
-}
-
-.chat-composer:focus-within {
-  background-color: #ffffff;
-  border-color: rgba(0, 0, 0, 0.08);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.07);
+  background-color: #F4F4F4;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -74,14 +74,14 @@ class MainActivity : TauriActivity() {
       webView?.addJavascriptInterface(HapticBridge(this), "AndroidBridge")
     }
 
+    // 只垫系统栏。键盘高度交给 WebView visualViewport，避免 IME padding 与 JS 视口双重挤压导致频闪。
     ViewCompat.setOnApplyWindowInsetsListener(contentView) { view, insets ->
-      val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
       val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
       view.setPadding(
         systemBars.left,
         systemBars.top,
         systemBars.right,
-        maxOf(systemBars.bottom, imeInsets.bottom)
+        systemBars.bottom
       )
       insets
     }
