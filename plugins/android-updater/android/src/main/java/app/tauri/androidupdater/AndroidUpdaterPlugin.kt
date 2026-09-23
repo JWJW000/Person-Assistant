@@ -19,10 +19,6 @@ import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 import java.io.File
-import java.io.FileOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
-import java.security.MessageDigest
 import java.util.concurrent.Executors
 
 private const val UPDATE_DIR = "updates"
@@ -95,18 +91,15 @@ class AndroidUpdaterPlugin(private val activity: Activity) : Plugin(activity) {
                 if (!dir.exists() && !dir.mkdirs()) {
                     throw IllegalStateException("无法创建更新缓存目录")
                 }
-                dir.listFiles()?.forEach { if (it.name != fileName) it.delete() }
+                dir.listFiles()?.forEach { if (it.name != fileName && !it.name.startsWith("$fileName.")) it.delete() }
 
                 val target = File(dir, fileName)
-                val digest = download(url, target, options.onEvent)
-
-                val expected = options.sha256?.trim()?.lowercase()
-                if (!expected.isNullOrEmpty()) {
-                    val actual = digest
-                    if (actual != expected) {
-                        target.delete()
-                        throw IllegalStateException("APK 校验失败：sha256 不匹配")
-                    }
+                ApkDownload.download(url, target, options.sha256) { downloaded, total ->
+                    emit(options.onEvent, JSObject().apply {
+                        put("event", "progress")
+                        put("downloaded", downloaded)
+                        put("total", if (total > 0) total else 0L)
+                    })
                 }
 
                 emit(options.onEvent, JSObject().apply {
@@ -139,7 +132,7 @@ class AndroidUpdaterPlugin(private val activity: Activity) : Plugin(activity) {
         }
 
         val dir = File(activity.cacheDir, UPDATE_DIR)
-        val file = options.fileName?.let { File(dir, it) }
+        val file = options.fileName?.let { File(dir, resolveFileName(it, "")) }
             ?: dir.listFiles()?.filter { it.extension.equals("apk", true) }?.maxByOrNull { it.lastModified() }
 
         if (file == null || !file.exists()) {
@@ -164,58 +157,8 @@ class AndroidUpdaterPlugin(private val activity: Activity) : Plugin(activity) {
         val name = provided?.trim().orEmpty().ifEmpty {
             url.substringAfterLast('/').substringBefore('?').ifEmpty { "update.apk" }
         }
+        require(name == File(name).name && name != "." && name != ".." && !name.contains('\\')) { "无效的安装包文件名" }
         return if (name.endsWith(".apk", ignoreCase = true)) name else "$name.apk"
-    }
-
-    private fun download(url: String, target: File, channel: Channel?): String {
-        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            instanceFollowRedirects = true
-            connectTimeout = 20000
-            readTimeout = 120000
-            requestMethod = "GET"
-        }
-
-        try {
-            connection.connect()
-            val code = connection.responseCode
-            if (code !in 200..299) {
-                throw IllegalStateException("下载失败：HTTP $code")
-            }
-
-            val total = connection.contentLengthLong
-            val digest = MessageDigest.getInstance("SHA-256")
-            var downloaded = 0L
-            var lastEmit = 0L
-            val buffer = ByteArray(64 * 1024)
-
-            connection.inputStream.use { input ->
-                FileOutputStream(target).use { output ->
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read <= 0) break
-                        output.write(buffer, 0, read)
-                        digest.update(buffer, 0, read)
-                        downloaded += read
-
-                        val now = System.currentTimeMillis()
-                        val done = total > 0 && downloaded >= total
-                        if (now - lastEmit > 200 || done) {
-                            lastEmit = now
-                            emit(channel, JSObject().apply {
-                                put("event", "progress")
-                                put("downloaded", downloaded)
-                                put("total", if (total > 0) total else 0L)
-                            })
-                        }
-                    }
-                    output.flush()
-                }
-            }
-
-            return digest.digest().joinToString("") { "%02x".format(it) }
-        } finally {
-            connection.disconnect()
-        }
     }
 
     private fun launchInstaller(file: File) {

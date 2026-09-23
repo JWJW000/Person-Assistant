@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TicketQuerySchema, TrainTicketSchema, RunEnvelopeEventSchema } from '../src/index.js';
+import { TicketQuerySchema, TrainTicketSchema, RunEnvelopeEventSchema, PiCommandRequestSchema, PiRunnerHelloSchema } from '../src/index.js';
 
 describe('Contracts Validation', () => {
   it('validates a correct TicketQuery', () => {
@@ -70,5 +70,17 @@ describe('Contracts Validation', () => {
     const parsed = RunEnvelopeEventSchema.parse(event);
     expect(parsed.seq).toBe(1);
     expect(parsed.type).toBe('run.started');
+  });
+
+  it('rejects remote Pi commands outside the allowlist', () => {
+    expect(() => PiCommandRequestSchema.parse({ clientRequestId: crypto.randomUUID(), kind: 'shell', payload: { command: 'rm' } })).toThrow();
+  });
+
+  it('accepts the pinned runner protocol hello', () => {
+    const parsed = PiRunnerHelloSchema.parse({
+      type: 'hello', protocolVersion: 1, piVersion: '0.84.2', platform: 'darwin', capabilities: ['abort'], projects: [], processInstanceId: crypto.randomUUID(), eventCursors: {}
+    });
+    expect(parsed.models).toEqual([]);
+    expect(parsed.sessions).toEqual([]);
   });
 });

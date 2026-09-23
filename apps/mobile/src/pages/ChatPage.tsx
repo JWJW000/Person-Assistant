@@ -1,3 +1,4 @@
+import { copyToClipboard } from '../lib/clipboard';
 import { triggerHaptic } from '../lib/ripple';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAppStore, AiModelItem } from '../store';
@@ -104,6 +105,8 @@ interface DisplayMessage {
   tickets?: TrainTicket[];
   isStreaming?: boolean;
   createTime?: string;
+  /** true = 历史消息加载，跳过入场动画 */
+  skipAnimation?: boolean;
 }
 
 function cleanDisplayContent(text: string): string {
@@ -113,29 +116,6 @@ function cleanDisplayContent(text: string): string {
     return text.replace(/\`\`\`(?:json)?\s*[\s\S]*?(?:\`\`\`|$)/g, "").trim();
   }
   return text;
-}
-
-async function copyToClipboard(text: string): Promise<boolean> {
-  if (navigator.clipboard && window.isSecureContext) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch {}
-  }
-  try {
-    const textArea = document.createElement('textarea');
-    textArea.value = text;
-    textArea.style.position = 'fixed';
-    textArea.style.opacity = '0';
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
-    const successful = document.execCommand('copy');
-    document.body.removeChild(textArea);
-    return successful;
-  } catch {
-    return false;
-  }
 }
 
 // 推荐提示卡片 (ChatGPT 风格)
@@ -181,7 +161,7 @@ const MessageItem = React.memo<MessageItemProps>(
     const isUser = msg.role === "user";
 
     return (
-      <div className={`chat-message-enter flex flex-col ${isUser ? "items-end" : "items-start"} max-w-full min-w-0`}>
+      <div className={`${msg.skipAnimation ? '' : 'chat-message-enter'} flex flex-col ${isUser ? "items-end" : "items-start"} max-w-full min-w-0`}>
         {isUser ? (
           <div className="max-w-[82%] sm:max-w-[75%] bg-[#F4F4F4] text-[#0D0D0D] rounded-3xl px-4 py-2.5 text-[15px] leading-relaxed select-text font-normal shadow-none">
             {msg.content}
@@ -198,6 +178,12 @@ const MessageItem = React.memo<MessageItemProps>(
                 <span className="font-mono text-xs text-slate-400">
                   {activeKbId ? "正在检索知识库并思考..." : "正在深度思考并组织回答..."}
                 </span>
+              </div>
+            ) : msg.isStreaming ? (
+              /* P0 性能优化：流式阶段使用纯文本渲染，避免每 45ms 全量重编译 Markdown AST */
+              <div className="whitespace-pre-wrap break-words text-[#0D0D0D] leading-[1.7]">
+                {cleanDisplayContent(msg.content)}
+                <span className="inline-block w-1.5 h-4 ml-0.5 bg-slate-900 animate-pulse align-middle" />
               </div>
             ) : (
               <div className="prose prose-slate max-w-full overflow-hidden text-[#0D0D0D] break-words [word-break:break-word] prose-p:my-2 prose-headings:my-2.5 prose-pre:my-2">
@@ -242,10 +228,6 @@ const MessageItem = React.memo<MessageItemProps>(
                 >
                   {cleanDisplayContent(msg.content)}
                 </ReactMarkdown>
-
-                {msg.isStreaming && (
-                  <span className="inline-block w-1.5 h-4 ml-0.5 bg-slate-900 animate-pulse align-middle" />
-                )}
               </div>
             )}
 
@@ -329,7 +311,12 @@ const MessageItem = React.memo<MessageItemProps>(
       prev.msg.tickets === next.msg.tickets &&
       prev.isExpanded === next.isExpanded &&
       prev.isCopied === next.isCopied &&
-      prev.activeKbId === next.activeKbId
+      prev.activeKbId === next.activeKbId &&
+      prev.onCopyText === next.onCopyText &&
+      prev.onCopyMessage === next.onCopyMessage &&
+      prev.onRegenerate === next.onRegenerate &&
+      prev.onToggleExpanded === next.onToggleExpanded &&
+      prev.onViewRoute === next.onViewRoute
     );
   }
 );
@@ -338,9 +325,10 @@ interface ChatPageProps {
   onOpenKnowledge?: () => void;
   onOpenSettings?: () => void;
   onOpenMemory?: () => void;
+  onOpenPi?: () => void;
 }
 
-export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSettings, onOpenMemory }) => {
+export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSettings, onOpenMemory, onOpenPi }) => {
   const {
     serverUrl,
     accessToken,
@@ -376,27 +364,32 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
   const abortControllerRef = useRef<AbortController | null>(null);
   const skipNextLoadRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  /** P0 同步防连发锁：在 await 期间也能阻止重复调用 */
+  const sendingRef = useRef(false);
 
-  const scrollToBottom = useCallback((smooth = true) => {
-    messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
+  /** P2 统一用 scrollTop 赋值，去掉 scrollIntoView smooth 打架 */
+  const scrollToBottom = useCallback(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
   }, []);
 
-  const handleCopyMessage = async (content: string, id: string | number) => {
+  const handleCopyMessage = useCallback(async (content: string, id: string | number) => {
     const ok = await copyToClipboard(content);
     if (ok) {
       setCopiedMsgId(id);
       setTimeout(() => setCopiedMsgId(null), 2000);
     }
-  };
+  }, []);
 
-  const adjustTextareaHeight = () => {
+  const adjustTextareaHeight = useCallback(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
-  };
+  }, []);
 
-  const handleViewRoute = (ticket: TrainTicket) => {
+  const handleViewRoute = useCallback((ticket: TrainTicket) => {
     setSelectedTicket(ticket);
     if (Array.isArray((ticket as any).routeStations) && (ticket as any).routeStations.length > 0) {
       setRouteStations((ticket as any).routeStations);
@@ -419,7 +412,11 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
       ]);
     }
     setRouteModalOpen(true);
-  };
+  }, []);
+
+  const handleToggleExpanded = useCallback((id: string | number) => {
+    setExpandedTicketsMap((prev) => ({ ...prev, [id]: !prev[id] }));
+  }, []);
 
   // 1. 获取模型列表
   const loadModels = useCallback(async () => {
@@ -483,10 +480,11 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
             content: m.content,
             tickets: tickets && tickets.length > 0 ? tickets : undefined,
             createTime: m.createTime,
+            skipAnimation: true,  // P2: 历史消息跳过入场动画
           };
         });
         setMessages(mapped);
-        setTimeout(() => scrollToBottom(false), 50);
+        setTimeout(() => scrollToBottom(), 50);
       } catch (err) {
         console.warn('获取历史记录失败:', err);
       }
@@ -557,7 +555,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
   };
 
   // 重新生成上一条回答
-  const handleRegenerate = (asstMsgId: string | number) => {
+  const handleRegenerate = useCallback((asstMsgId: string | number) => {
     const idx = messages.findIndex((m) => m.id === asstMsgId);
     if (idx > 0) {
       const prevUserMsg = messages[idx - 1];
@@ -566,13 +564,17 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
         handleSendMessage(prevUserMsg.content);
       }
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages]);
 
   // 发送消息
   const handleSendMessage = async (textToSend?: string) => {
     const text = (textToSend || inputText).trim();
     if (!text || loading) return;
-    if (!serverUrl || !accessToken) return;
+    // P0 同步防连发：用 ref 做瞬时锁，防止 await 期间重复进入
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    if (!serverUrl || !accessToken) { sendingRef.current = false; return; }
 
     let targetSessionId = activeConversationId;
     if (!targetSessionId || targetSessionId === 'default') {
@@ -583,6 +585,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
         setActiveConversationId(targetSessionId);
         loadSessions();
       } catch (err: any) {
+        sendingRef.current = false;
         if (
           err.message?.includes('登录') ||
           err.message?.includes('401') ||
@@ -677,6 +680,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
       onError: (err: any) => {
         flushStreamBuffer(true);
         setLoading(false);
+        sendingRef.current = false;
         abortControllerRef.current = null;
         if (
           String(err?.message || err).includes('401') ||
@@ -691,6 +695,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
       onDone: () => {
         flushStreamBuffer(true);
         setLoading(false);
+        sendingRef.current = false;
         abortControllerRef.current = null;
       },
     });
@@ -702,7 +707,8 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
   return (
     <div className="flex flex-col h-full bg-white text-[#0D0D0D] antialiased overflow-hidden relative selection:bg-slate-900 selection:text-white">
       {/* ChatGPT 标志性顶部导航栏 (三段式极简架构) */}
-      <header className="safe-top bg-white/95 backdrop-blur-xl px-3 py-2 flex items-center justify-between z-20 sticky top-0 border-b border-black/[0.04]">
+      {/* P1: 去掉 backdrop-blur-xl，Android WebView 逐帧高斯模糊极其昂贵 */}
+      <header className="safe-top bg-white px-3 py-2 flex items-center justify-between z-20 sticky top-0 border-b border-black/[0.04]">
         {/* 左侧：抽屉按钮 */}
         <button
           onClick={() => setDrawerOpen(true)}
@@ -789,9 +795,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
               onCopyText={copyToClipboard}
               onCopyMessage={handleCopyMessage}
               onRegenerate={handleRegenerate}
-              onToggleExpanded={(id) =>
-                setExpandedTicketsMap((prev) => ({ ...prev, [id]: !prev[id] }))
-              }
+              onToggleExpanded={handleToggleExpanded}
               onViewRoute={handleViewRoute}
             />
           ))
@@ -871,7 +875,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
 
       {/* 模型切换 Action Sheet (iOS 半屏平滑呼出) */}
       {modelSheetOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 animate-in fade-in duration-200">
           <div
             onClick={() => setModelSheetOpen(false)}
             className="fixed inset-0"
@@ -920,7 +924,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
 
       {/* + 号展开工具浮层 (Tools Sheet) */}
       {toolsSheetOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 animate-in fade-in duration-150">
           <div
             onClick={() => setToolsSheetOpen(false)}
             className="fixed inset-0"
@@ -1011,6 +1015,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
         onOpenKnowledge={onOpenKnowledge}
         onOpenMemory={onOpenMemory}
         onOpenSettings={onOpenSettings}
+        onOpenPi={onOpenPi}
       />
 
       {/* 经停站时刻表弹窗 */}

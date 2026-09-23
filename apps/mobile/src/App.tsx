@@ -6,12 +6,14 @@ import { ChatPage } from './pages/ChatPage';
 import { KnowledgePage } from './pages/KnowledgePage';
 import { SettingsPage } from './pages/SettingsPage';
 import { MemoryPage } from './pages/MemoryPage';
+import { PiTasksPage } from './pages/PiTasksPage';
 import { UpdateBanner } from './components/UpdateBanner';
 
 export const App: React.FC = () => {
   const { accessToken } = useAppStore();
+  const piRemoteEnabled = import.meta.env.VITE_PI_REMOTE_ENABLED === 'true';
   const [authMode, setAuthMode] = useState<'login' | 'pair'>('login');
-  const [activeOverlay, setActiveOverlay] = useState<'none' | 'knowledge' | 'settings' | 'memory'>('none');
+  const [activeOverlay, setActiveOverlay] = useState<'none' | 'knowledge' | 'settings' | 'memory' | 'pi'>('none');
   // 视口与软键盘弹性适配：利用 CSS 变量直接在合成器层更新，绝不在键盘弹起时高频触发 React 根组件重渲染
   useEffect(() => {
     const syncViewport = () => {
@@ -69,6 +71,7 @@ export const App: React.FC = () => {
           onOpenKnowledge={() => setActiveOverlay('knowledge')}
           onOpenMemory={() => setActiveOverlay('memory')}
           onOpenSettings={() => setActiveOverlay('settings')}
+          onOpenPi={piRemoteEnabled ? () => setActiveOverlay('pi') : undefined}
         />
 
         {/* 知识库管理滑动层 */}
@@ -89,6 +92,12 @@ export const App: React.FC = () => {
         {activeOverlay === 'settings' && (
           <div className="absolute inset-0 z-40 bg-white animate-in slide-in-from-right duration-200">
             <SettingsPage onBack={() => setActiveOverlay('none')} />
+          </div>
+        )}
+
+        {activeOverlay === 'pi' && (
+          <div className="absolute inset-0 z-40 bg-white animate-in slide-in-from-right duration-200">
+            <PiTasksPage onBack={() => setActiveOverlay('none')} />
           </div>
         )}
       </main>

@@ -1,0 +1,19 @@
+[Unit]
+Description=Personal Assistant Pi Runner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi-runner
+WorkingDirectory=/opt/personal-ai-assistant
+Environment=PI_RUNNER_STATE_DIR=/var/lib/pi-runner
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/node /opt/personal-ai-assistant/apps/pi-runner/dist/index.js start
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

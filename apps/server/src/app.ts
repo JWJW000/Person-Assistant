@@ -11,6 +11,7 @@ import {
   CreateRunRequestSchema,
   TicketQuerySchema
 } from '@assistant/contracts';
+import { registerPi } from './pi.js';
 
 
 async function findTransferRoutes(
@@ -85,6 +86,7 @@ export function buildServer(): { app: any; db: any } {
   const app = fastify({ logger: false });
   const db = createDatabase();
   migrate(db);
+  registerPi(app, db);
 
   // 跨域支持 (为开发和 Tauri WebView 准备)
   app.register(cors, {

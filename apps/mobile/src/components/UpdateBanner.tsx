@@ -182,11 +182,11 @@ export const UpdateBanner: React.FC<{ autoCheck?: boolean }> = ({ autoCheck = tr
             <div className="font-semibold">更新失败</div>
             <div className="mt-0.5 text-[11px]">{message}</div>
             <button
-              onClick={() => check(false)}
+              onClick={manifest ? handleUpdate : () => check(false)}
               className="mt-2 inline-flex items-center gap-1 bg-rose-600 text-white px-3 py-1.5 rounded-lg font-semibold active:scale-95 transition-transform"
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              重新检查
+              {manifest ? '继续下载' : '重新检查'}
             </button>
           </>
         )}

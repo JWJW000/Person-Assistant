@@ -1,4 +1,4 @@
-import React, { FC, useState, useMemo } from 'react';
+import React, { FC, useState, useEffect, useRef, useMemo } from 'react';
 import { ConversationItem, useAppStore } from '../store';
 import { ConfirmModal } from './ConfirmModal';
 import {
@@ -13,6 +13,7 @@ import {
   LogOut,
   ChevronRight,
   Brain,
+  Bot,
 } from 'lucide-react';
 
 interface ConversationDrawerProps {
@@ -25,6 +26,7 @@ interface ConversationDrawerProps {
   onOpenKnowledge?: () => void;
   onOpenMemory?: () => void;
   onOpenSettings?: () => void;
+  onOpenPi?: () => void;
 }
 
 export const ConversationDrawer: FC<ConversationDrawerProps> = ({
@@ -37,6 +39,7 @@ export const ConversationDrawer: FC<ConversationDrawerProps> = ({
   onOpenKnowledge,
   onOpenMemory,
   onOpenSettings,
+  onOpenPi,
 }) => {
   const { conversations, activeConversationId, currentUser, logout } = useAppStore();
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -56,6 +59,28 @@ export const ConversationDrawer: FC<ConversationDrawerProps> = ({
     content: '',
     onConfirm: () => {},
   });
+
+  // --- 柔和进出动画：用 CSS transition 而不是条件卸载 ---
+  const [mounted, setMounted] = useState(false);
+  const [visible, setVisible] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => {
+    if (isOpen) {
+      // 打开：先挂载 DOM，下一帧激活 transition
+      setMounted(true);
+      clearTimeout(timerRef.current);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setVisible(true));
+      });
+    } else {
+      // 关闭：先触发 transition out，结束后卸载 DOM
+      setVisible(false);
+      clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setMounted(false), 240);
+    }
+    return () => clearTimeout(timerRef.current);
+  }, [isOpen]);
 
   // 过滤并按时间分组
   const filteredList = useMemo(() => {
@@ -96,7 +121,7 @@ export const ConversationDrawer: FC<ConversationDrawerProps> = ({
     ].filter((g) => g.items.length > 0);
   }, [filteredList]);
 
-  if (!isOpen) return null;
+  if (!mounted) return null;
 
   const handleStartRename = (c: ConversationItem, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -116,16 +141,20 @@ export const ConversationDrawer: FC<ConversationDrawerProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex antialiased">
-      {/* 遮罩层 (点击关闭) */}
+      {/* 遮罩层 (点击关闭，柔和淡入淡出) */}
       <div
         onClick={onClose}
-        className="absolute inset-0 bg-black/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+        className="absolute inset-0 bg-black/40 transition-opacity duration-200 ease-out"
+        style={{ opacity: visible ? 1 : 0 }}
       />
 
-      {/* ChatGPT 风格侧边抽屉面板 */}
-      <div className="relative w-[85%] max-w-xs bg-[#FBFBFB] h-full border-r border-black/[0.06] shadow-2xl flex flex-col z-10 animate-in slide-in-from-left duration-200">
+      {/* 侧边抽屉面板 (柔和滑入滑出) */}
+      <div
+        className="relative w-[85%] max-w-xs bg-[#FBFBFB] h-full border-r border-black/[0.06] shadow-2xl flex flex-col z-10 transition-transform duration-200 ease-out"
+        style={{ transform: visible ? 'translateX(0)' : 'translateX(-100%)' }}
+      >
         {/* 抽屉顶部功能栏：新建对话与搜索 */}
-        <div className="safe-top px-3.5 pt-3 pb-2 flex flex-col gap-2.5 border-b border-black/[0.04] bg-white/60 backdrop-blur-md">
+        <div className="safe-top px-3.5 pt-3 pb-2 flex flex-col gap-2.5 border-b border-black/[0.04] bg-white">
           <div className="flex items-center justify-between">
             <button
               onClick={() => {
@@ -255,8 +284,19 @@ export const ConversationDrawer: FC<ConversationDrawerProps> = ({
         </div>
 
         {/* 抽屉底部：管理工具与个人账号快捷入口 */}
-        <div className="safe-bottom p-2.5 border-t border-black/[0.04] bg-white/70 backdrop-blur-md flex flex-col gap-1">
+        <div className="safe-bottom p-2.5 border-t border-black/[0.04] bg-white flex flex-col gap-1">
           {/* Hermes 三层记忆快捷入口 */}
+          {onOpenPi && (
+            <button
+              onClick={() => { onOpenPi(); onClose(); }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-700 hover:bg-slate-100 transition-colors"
+            >
+              <Bot className="w-4 h-4" />
+              <span className="flex-1 text-left">Pi 任务</span>
+              <ChevronRight className="w-4 h-4 text-slate-400" />
+            </button>
+          )}
+
           {onOpenMemory && (
             <button
               onClick={() => {

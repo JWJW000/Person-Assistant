@@ -112,6 +112,31 @@ importers:
         specifier: ^6.1.0
         version: 6.4.3(@types/node@22.20.3)(jiti@1.21.7)(tsx@4.23.13)(yaml@2.9.0)
 
+  apps/pi-runner:
+    dependencies:
+      '@assistant/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      better-sqlite3:
+        specifier: ^11.8.1
+        version: 11.10.0
+      ws:
+        specifier: 8.21.3
+        version: 8.21.3
+    devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^7.6.12
+        version: 7.6.13
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
+      tsx:
+        specifier: ^4.19.3
+        version: 4.23.13
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
   apps/server:
     dependencies:
       '@assistant/agent-runtime':
@@ -138,6 +163,9 @@ importers:
       fastify:
         specifier: ^5.2.1
         version: 5.12.4
+      ws:
+        specifier: 8.21.3
+        version: 8.21.3
       zod:
         specifier: ^3.24.2
         version: 3.25.76
@@ -145,6 +173,9 @@ importers:
       '@types/better-sqlite3':
         specifier: ^7.6.12
         version: 7.6.13
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
       tsx:
         specifier: ^4.19.3
         version: 4.23.13
@@ -2029,6 +2060,9 @@ packages:
 
   '@types/unist@3.0.3':
     resolution: {integrity: sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q==}
+
+  '@types/ws@8.18.1':
+    resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
 
   '@ungap/structured-clone@1.4.0':
     resolution: {integrity: sha512-1mEZtMKPM09vDmQt5y7YvmN2+DFTP7Tg0EWXdic8/C6VRnpb33e4ghisCIE3WZjsE2N8mf+QV1Zqh7ZFYLWInQ==}
@@ -5748,6 +5782,10 @@ snapshots:
   '@types/unist@2.0.11': {}
 
   '@types/unist@3.0.3': {}
+
+  '@types/ws@8.18.1':
+    dependencies:
+      '@types/node': 22.20.3
 
   '@ungap/structured-clone@1.4.0': {}
 

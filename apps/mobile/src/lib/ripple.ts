@@ -33,22 +33,6 @@ export function initTactileEffects() {
   // 激活移动端 WebKit 和 Android WebView 对 :active 伪类的触控响应
   document.addEventListener('touchstart', () => {}, { passive: true });
 
-  // 绑定全局点击与按压物理触感
-  document.addEventListener(
-    'pointerdown',
-    (e: PointerEvent) => {
-      if (e.button !== 0) return;
-
-      const target = (e.target as HTMLElement)?.closest(
-        'button, [role="button"], a, .interactive-click, .ticket-card, input[type="submit"]'
-      ) as HTMLElement | null;
-
-      if (!target || target.hasAttribute('disabled') || target.getAttribute('aria-disabled') === 'true') {
-        return;
-      }
-
-      triggerHaptic(20);
-    },
-    { passive: true }
-  );
+  // P1: 已移除全局 pointerdown 触觉反馈。
+  // 触觉反馈现在只在特定场景手动调用 triggerHaptic()。
 }

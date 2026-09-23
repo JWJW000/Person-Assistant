@@ -1,0 +1,10 @@
+#!/bin/sh
+# The runner's private home supplies a dedicated key and pinned host public key.
+set -eu
+if [ "$#" -eq 0 ]; then
+    echo 'Usage: server-exec "command to run on the cloud server"' >&2
+    exit 64
+fi
+exec ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+    -o ConnectTimeout=10 -o UserKnownHostsFile=/home/node/.ssh/known_hosts \
+    -i /home/node/.ssh/server-admin root@pi-server "$@"

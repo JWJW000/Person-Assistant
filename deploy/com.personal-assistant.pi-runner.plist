@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.personal-assistant.pi-runner</string>
+  <key>ProgramArguments</key><array>
+    <string>/usr/local/bin/node</string>
+    <string>/opt/personal-ai-assistant/apps/pi-runner/dist/index.js</string>
+    <string>start</string>
+  </array>
+  <key>EnvironmentVariables</key><dict>
+    <key>PI_RUNNER_STATE_DIR</key><string>/Users/REPLACE_ME/.pi-remote-runner</string>
+    <key>PATH</key><string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>WorkingDirectory</key><string>/opt/personal-ai-assistant</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/tmp/pi-runner.log</string>
+  <key>StandardErrorPath</key><string>/tmp/pi-runner.err</string>
+</dict></plist>

@@ -38,6 +38,9 @@ interface AppState {
   knowledgeBases: KnowledgeBaseItem[];
   activeModelId: number | null;
   chatModels: AiModelItem[];
+  selectedPiHostId: string | null;
+  selectedPiTaskId: string | null;
+  piEventCursors: Record<string, number>;
 
   setServerUrl: (url: string) => void;
   setAccessToken: (token: string | null) => void;
@@ -49,6 +52,9 @@ interface AppState {
   setKnowledgeBases: (bases: KnowledgeBaseItem[]) => void;
   setActiveModelId: (modelId: number | null) => void;
   setChatModels: (models: AiModelItem[]) => void;
+  setSelectedPiHostId: (id: string | null) => void;
+  setSelectedPiTaskId: (id: string | null) => void;
+  setPiEventCursor: (runId: string, seq: number) => void;
   logout: () => void;
 }
 
@@ -81,6 +87,9 @@ export const useAppStore = create<AppState>((set) => ({
     return v && v !== 'null' ? Number(v) : 7; // 默认选用 DeepSeek V4 Pro (id: 7)
   })(),
   chatModels: DEFAULT_RELAY_MODELS,
+  selectedPiHostId: localStorage.getItem('selected_pi_host_id'),
+  selectedPiTaskId: localStorage.getItem('selected_pi_task_id'),
+  piEventCursors: (() => { try { return JSON.parse(localStorage.getItem('pi_event_cursors') || '{}'); } catch { return {}; } })(),
 
   setServerUrl: (url) => {
     localStorage.setItem('server_url', url);
@@ -141,6 +150,9 @@ export const useAppStore = create<AppState>((set) => ({
   },
 
   setChatModels: (models) => set({ chatModels: models }),
+  setSelectedPiHostId: (selectedPiHostId) => { selectedPiHostId ? localStorage.setItem('selected_pi_host_id', selectedPiHostId) : localStorage.removeItem('selected_pi_host_id'); set({ selectedPiHostId }); },
+  setSelectedPiTaskId: (selectedPiTaskId) => { selectedPiTaskId ? localStorage.setItem('selected_pi_task_id', selectedPiTaskId) : localStorage.removeItem('selected_pi_task_id'); set({ selectedPiTaskId }); },
+  setPiEventCursor: (runId, seq) => set((state) => { const piEventCursors = { ...state.piEventCursors, [runId]: Math.max(state.piEventCursors[runId] || 0, seq) }; localStorage.setItem('pi_event_cursors', JSON.stringify(piEventCursors)); return { piEventCursors }; }),
 
   logout: () => {
     localStorage.removeItem('access_token');
@@ -149,6 +161,9 @@ export const useAppStore = create<AppState>((set) => ({
     localStorage.removeItem('active_kb_id');
     localStorage.removeItem('active_model_id');
     localStorage.removeItem('active_conversation_id');
+    localStorage.removeItem('selected_pi_host_id');
+    localStorage.removeItem('selected_pi_task_id');
+    localStorage.removeItem('pi_event_cursors');
     set({
       accessToken: null,
       deviceToken: null,
@@ -158,6 +173,9 @@ export const useAppStore = create<AppState>((set) => ({
       conversations: [],
       knowledgeBases: DEFAULT_KNOWLEDGE_BASES,
       chatModels: DEFAULT_RELAY_MODELS,
+      selectedPiHostId: null,
+      selectedPiTaskId: null,
+      piEventCursors: {},
     });
   },
 }));

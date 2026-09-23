@@ -10,6 +10,7 @@ RUN apk add --no-cache python3 make g++ gcc
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY packages/ ./packages/
 COPY apps/server/ ./apps/server/
+COPY apps/pi-runner/ ./apps/pi-runner/
 
 RUN pnpm install --frozen-lockfile
 RUN pnpm -r --filter=!@assistant/mobile build
@@ -19,7 +20,7 @@ FROM node:22-alpine AS runner
 
 WORKDIR /app
 
-RUN apk add --no-cache dumb-init
+RUN apk add --no-cache dumb-init bash git ripgrep
 
 ENV NODE_ENV=production
 ENV PORT=3000
@@ -30,6 +31,7 @@ COPY --from=builder /app/package.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/packages/ ./packages/
 COPY --from=builder /app/apps/server/ ./apps/server/
+COPY --from=builder /app/apps/pi-runner/ ./apps/pi-runner/
 
 RUN mkdir -p /app/data && chown -R node:node /app
 

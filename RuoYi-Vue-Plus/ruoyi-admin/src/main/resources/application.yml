@@ -382,3 +382,8 @@ spring.ai.mcp:
             - -y
             - '@modelcontextprotocol/server-filesystem'
             - D:/data
+
+--- # Pi 远程任务内部网关（地址固定由部署配置提供，不接受客户端覆盖）
+pi:
+  gateway-url: ${PI_GATEWAY_URL:http://127.0.0.1:3000}
+  internal-token: ${PI_INTERNAL_TOKEN:}
