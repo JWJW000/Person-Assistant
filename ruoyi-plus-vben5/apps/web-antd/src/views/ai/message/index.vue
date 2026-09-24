@@ -237,25 +237,25 @@
             <div class="text-sm font-medium text-zinc-800 dark:text-zinc-200">消息正文：</div>
             <a-button size="small" @click="copyText(activeMessage.content)">一键复制内容</a-button>
           </div>
-          <div class="rounded-lg border border-zinc-200 dark:border-zinc-700 select-text overflow-hidden">
-            <MarkdownViewer :content="activeMessage.content" bordered max-height="380px" />
+          <div class="rounded-lg border border-zinc-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900/80 p-3.5 select-text overflow-hidden">
+            <MarkdownViewer :content="activeMessage.content" copyable max-height="380px" />
           </div>
         </div>
 
         <!-- 知识库切片引用展示 -->
         <div v-if="activeMessage.citations && activeMessage.citations.length" class="space-y-2">
-          <div class="text-sm font-medium text-blue-600 dark:text-blue-400 flex items-center gap-1">
-            <span>📚 检索命中的知识库引用 (共 {{ activeMessage.citations.length }} 条)</span>
+          <div class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+            知识库引用检索片段 (共 {{ activeMessage.citations.length }} 条)
           </div>
           <div class="space-y-2 max-h-48 overflow-y-auto">
             <div
               v-for="(cit, idx) in activeMessage.citations"
               :key="idx"
-              class="p-2.5 bg-blue-50/40 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-900/40 rounded text-xs"
+              class="p-2.5 bg-zinc-50 dark:bg-zinc-800/40 border border-zinc-200/70 dark:border-zinc-800 rounded-lg text-xs"
             >
-              <div class="flex items-center justify-between mb-1 text-zinc-500 font-medium">
-                <span>片段 #{{ Number(idx) + 1 }} {{ cit.title ? `· ${cit.title}` : '' }}</span>
-                <span v-if="cit.score" class="font-mono text-blue-600">相似度: {{ (cit.score * 100).toFixed(1) }}%</span>
+              <div class="flex items-center justify-between mb-1.5 text-zinc-500 font-medium">
+                <span class="font-mono text-zinc-600 dark:text-zinc-300">#{{ Number(idx) + 1 }} {{ cit.title ? `· ${cit.title}` : '' }}</span>
+                <span v-if="cit.score" class="font-mono text-blue-600 dark:text-blue-400 font-semibold">{{ (cit.score * 100).toFixed(1) }}%</span>
               </div>
               <div class="text-zinc-700 dark:text-zinc-300">
                 <MarkdownViewer

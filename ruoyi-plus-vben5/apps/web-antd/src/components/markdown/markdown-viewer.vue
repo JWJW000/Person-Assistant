@@ -2,24 +2,26 @@
   <div
     class="markdown-viewer-container relative select-text"
     :class="[
-      bordered ? 'border border-zinc-200/80 dark:border-zinc-800 rounded-xl bg-zinc-50/50 dark:bg-zinc-900/50 p-3.5' : '',
+      bordered ? 'border border-zinc-200/80 dark:border-zinc-800 rounded-lg bg-zinc-50/40 dark:bg-zinc-900/40 p-3.5' : '',
       compact ? 'compact-mode' : '',
     ]"
   >
     <!-- 全文一键复制操作栏 -->
     <div
       v-if="copyable && content"
-      class="absolute top-2 right-2 z-10 opacity-70 hover:opacity-100 transition-opacity"
+      class="absolute top-2.5 right-2.5 z-10"
     >
-      <a-button
-        size="small"
-        type="text"
-        class="text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 bg-white/80 dark:bg-zinc-800/80 backdrop-blur-xs border border-zinc-200/80 dark:border-zinc-700/80 rounded-md px-2 py-0.5 shadow-2xs"
+      <button
+        type="button"
+        class="inline-flex items-center gap-1.5 px-2 py-1 text-xs text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200 bg-white/90 dark:bg-zinc-800/90 hover:bg-zinc-100 dark:hover:bg-zinc-700/80 border border-zinc-200/80 dark:border-zinc-700 rounded-md shadow-2xs transition-colors cursor-pointer"
         @click="handleCopyAll"
       >
-        <span v-if="copiedAll" class="text-emerald-600 dark:text-emerald-400 font-medium">✓ 已复制</span>
-        <span v-else>📋 复制全文</span>
-      </a-button>
+        <CheckOutlined v-if="copiedAll" class="text-emerald-500 text-[11px]" />
+        <CopyOutlined v-else class="text-[11px]" />
+        <span :class="copiedAll ? 'text-emerald-600 dark:text-emerald-400 font-medium' : ''">
+          {{ copiedAll ? '已复制' : '复制全文' }}
+        </span>
+      </button>
     </div>
 
     <!-- 渲染主体 -->
@@ -34,6 +36,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import { CopyOutlined, CheckOutlined } from '@antdv-next/icons';
 import { Marked } from 'marked';
 import hljs from 'highlight.js';
 import DOMPurify from 'dompurify';
@@ -46,13 +49,14 @@ interface Props {
   copyable?: boolean;
   emptyText?: string;
 }
+
 const props = withDefaults(defineProps<Props>(), {
   content: '',
   maxHeight: undefined,
   bordered: false,
   compact: false,
   copyable: false,
-  emptyText: '（暂无内容）',
+  emptyText: '暂无内容',
 });
 
 const copiedAll = ref(false);
@@ -89,14 +93,14 @@ const markedInstance = new Marked({
       }
       const displayLang = cleanLang || 'text';
       const encodedCode = encodeURIComponent(text);
-      return `<div class="code-block-card my-2.5 rounded-lg overflow-hidden border border-zinc-200/80 dark:border-zinc-800 bg-[#f8f9fa] dark:bg-[#181825] shadow-2xs">
-  <div class="code-block-header flex items-center justify-between px-3 py-1 bg-zinc-100/90 dark:bg-[#11111b] border-b border-zinc-200/80 dark:border-zinc-800 text-[11px] font-mono text-zinc-500 dark:text-zinc-400 select-none">
-    <span class="font-semibold uppercase tracking-wider">${displayLang}</span>
-    <button type="button" class="code-copy-btn flex items-center gap-1 px-1.5 py-0.5 rounded text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200 hover:bg-zinc-200/60 dark:hover:bg-zinc-700/60 transition-colors cursor-pointer" data-code="${encodedCode}">
+      return `<div class="code-card my-2.5 rounded-lg overflow-hidden border border-zinc-800 bg-[#0d1117] text-[#e6edf3] shadow-2xs">
+  <div class="flex items-center justify-between px-3 py-1.5 bg-[#161b22] border-b border-zinc-800 text-[11px] font-mono text-zinc-400 select-none">
+    <span class="font-medium tracking-wide uppercase text-[10px] text-zinc-400">${displayLang}</span>
+    <button type="button" class="code-copy-btn inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] text-zinc-400 hover:text-white hover:bg-zinc-700/60 transition-colors cursor-pointer" data-code="${encodedCode}">
       <span class="btn-text">复制</span>
     </button>
   </div>
-  <pre class="m-0 p-3 overflow-x-auto text-xs font-mono leading-relaxed bg-[#f8f9fa] dark:bg-[#181825]"><code>${highlighted}</code></pre>
+  <pre class="m-0 p-3 overflow-x-auto text-[12px] font-mono leading-relaxed bg-[#0d1117] text-[#e6edf3]"><code>${highlighted}</code></pre>
 </div>`;
     },
   },
@@ -116,7 +120,7 @@ function sanitizeHtml(dirty: string): string {
 const renderedHtml = computed(() => {
   const text = (props.content || '').trim();
   if (!text) {
-    return `<div class="text-zinc-400 dark:text-zinc-500 italic text-xs py-2">${props.emptyText}</div>`;
+    return `<div class="text-zinc-400 dark:text-zinc-500 text-xs py-2">${props.emptyText}</div>`;
   }
   try {
     const parsed = markedInstance.parse(text) as string;
@@ -148,10 +152,10 @@ function handleContainerClick(event: MouseEvent) {
   if (textSpan) {
     const oldText = textSpan.textContent;
     textSpan.textContent = '已复制 ✓';
-    btn.classList.add('text-emerald-600', 'dark:text-emerald-400');
+    btn.classList.add('text-emerald-400');
     setTimeout(() => {
       textSpan.textContent = oldText;
-      btn.classList.remove('text-emerald-600', 'dark:text-emerald-400');
+      btn.classList.remove('text-emerald-400');
     }, 2000);
   }
 }
@@ -193,14 +197,14 @@ function fallbackCopy(text: string) {
 <style scoped>
 .markdown-body {
   font-size: 0.8125rem;
-  line-height: 1.6;
-  color: #27272a;
+  line-height: 1.65;
+  color: #3f3f46;
   word-break: break-word;
 }
 
 :deep(.dark) .markdown-body,
 .dark .markdown-body {
-  color: #e4e4e7;
+  color: #d4d4d8;
 }
 
 /* 紧凑模式 */
@@ -210,37 +214,37 @@ function fallbackCopy(text: string) {
 }
 
 :deep(.markdown-body h1) {
-  font-size: 1.25rem;
-  font-weight: 700;
-  margin-top: 0.75rem;
-  margin-bottom: 0.5rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin-top: 0.85rem;
+  margin-bottom: 0.4rem;
   padding-bottom: 0.25rem;
-  border-bottom: 1px solid rgba(228, 228, 231, 0.8);
+  border-bottom: 1px solid #f1f5f9;
   color: #18181b;
 }
 :deep(.dark .markdown-body h1) {
-  border-bottom-color: rgba(63, 63, 70, 0.8);
+  border-bottom-color: #27272a;
   color: #f4f4f5;
 }
 
 :deep(.markdown-body h2) {
-  font-size: 1.1rem;
-  font-weight: 700;
+  font-size: 1.05rem;
+  font-weight: 600;
   margin-top: 0.75rem;
-  margin-bottom: 0.375rem;
+  margin-bottom: 0.35rem;
   padding-bottom: 0.2rem;
-  border-bottom: 1px solid rgba(244, 244, 245, 0.9);
+  border-bottom: 1px solid #f8fafc;
   color: #18181b;
 }
 :deep(.dark .markdown-body h2) {
-  border-bottom-color: rgba(39, 39, 42, 0.9);
+  border-bottom-color: #27272a;
   color: #f4f4f5;
 }
 
 :deep(.markdown-body h3) {
-  font-size: 0.95rem;
+  font-size: 0.925rem;
   font-weight: 600;
-  margin-top: 0.625rem;
+  margin-top: 0.65rem;
   margin-bottom: 0.25rem;
   color: #27272a;
 }
@@ -251,10 +255,10 @@ function fallbackCopy(text: string) {
 :deep(.markdown-body h4),
 :deep(.markdown-body h5),
 :deep(.markdown-body h6) {
-  font-size: 0.85rem;
+  font-size: 0.825rem;
   font-weight: 600;
   margin-top: 0.5rem;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.2rem;
   color: #27272a;
 }
 :deep(.dark .markdown-body h4),
@@ -264,22 +268,22 @@ function fallbackCopy(text: string) {
 }
 
 :deep(.markdown-body p) {
-  margin-top: 0.375rem;
-  margin-bottom: 0.375rem;
+  margin-top: 0.35rem;
+  margin-bottom: 0.35rem;
 }
 
 :deep(.markdown-body ul) {
   list-style-type: disc;
   padding-left: 1.25rem;
-  margin-top: 0.375rem;
-  margin-bottom: 0.375rem;
+  margin-top: 0.35rem;
+  margin-bottom: 0.35rem;
 }
 
 :deep(.markdown-body ol) {
   list-style-type: decimal;
   padding-left: 1.25rem;
-  margin-top: 0.375rem;
-  margin-bottom: 0.375rem;
+  margin-top: 0.35rem;
+  margin-bottom: 0.35rem;
 }
 
 :deep(.markdown-body li) {
@@ -288,98 +292,98 @@ function fallbackCopy(text: string) {
 }
 
 :deep(.markdown-body blockquote) {
-  border-left: 3.5px solid #3b82f6;
-  background-color: rgba(239, 246, 255, 0.6);
-  padding: 0.375rem 0.75rem;
+  border-left: 3px solid #cbd5e1;
+  background-color: #f8fafc;
+  padding: 0.35rem 0.75rem;
   margin: 0.5rem 0;
   border-radius: 0 0.375rem 0.375rem 0;
-  font-style: italic;
-  color: #4b5563;
+  color: #64748b;
+  font-style: normal;
 }
 :deep(.dark .markdown-body blockquote) {
-  background-color: rgba(30, 58, 138, 0.2);
-  border-left-color: #60a5fa;
-  color: #d1d5db;
+  border-left-color: #3f3f46;
+  background-color: #18181b;
+  color: #94a3b8;
 }
 
 :deep(.markdown-body table) {
   width: 100%;
-  border-collapse: collapse;
-  margin: 0.625rem 0;
-  font-size: 0.8125rem;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 0.65rem 0;
+  font-size: 0.775rem;
   border-radius: 0.5rem;
   overflow: hidden;
-  border: 1px solid rgba(228, 228, 231, 0.8);
+  border: 1px solid #e2e8f0;
 }
 :deep(.dark .markdown-body table) {
-  border-color: rgba(63, 63, 70, 0.8);
+  border-color: #27272a;
 }
 
 :deep(.markdown-body th) {
-  background-color: rgba(244, 244, 245, 0.95);
-  padding: 0.4rem 0.625rem;
+  background-color: #f8fafc;
+  padding: 0.45rem 0.75rem;
   font-weight: 600;
-  border-bottom: 1px solid rgba(228, 228, 231, 0.8);
+  border-bottom: 1px solid #e2e8f0;
   text-align: left;
-  color: #3f3f46;
+  color: #475569;
 }
 :deep(.dark .markdown-body th) {
-  background-color: rgba(39, 39, 42, 0.9);
-  border-bottom-color: rgba(63, 63, 70, 0.8);
-  color: #d4d4d8;
+  background-color: #18181b;
+  border-bottom-color: #27272a;
+  color: #cbd5e1;
 }
 
 :deep(.markdown-body td) {
-  padding: 0.375rem 0.625rem;
-  border-bottom: 1px solid rgba(244, 244, 245, 0.8);
-  color: #52525b;
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
 }
 :deep(.dark .markdown-body td) {
-  border-bottom-color: rgba(39, 39, 42, 0.6);
-  color: #a1a1aa;
+  border-bottom-color: #27272a;
+  color: #94a3b8;
+}
+
+:deep(.markdown-body tr:last-child td) {
+  border-bottom: none;
 }
 
 :deep(.markdown-body tr:hover td) {
-  background-color: rgba(244, 244, 245, 0.5);
+  background-color: #f8fafc;
 }
 :deep(.dark .markdown-body tr:hover td) {
-  background-color: rgba(39, 39, 42, 0.4);
+  background-color: #27272a;
 }
 
 :deep(.markdown-body code:not(pre code)) {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.85em;
-  background-color: rgba(244, 244, 245, 0.9);
-  color: #db2777;
-  padding: 0.125rem 0.375rem;
+  background-color: #f1f5f9;
+  color: #0f172a;
+  padding: 0.125rem 0.35rem;
   border-radius: 0.25rem;
-  border: 1px solid rgba(228, 228, 231, 0.8);
+  border: 1px solid #e2e8f0;
+  font-weight: 500;
 }
 :deep(.dark .markdown-body code:not(pre code)) {
-  background-color: rgba(39, 39, 42, 0.9);
-  color: #f472b6;
-  border-color: rgba(63, 63, 70, 0.8);
+  background-color: #27272a;
+  color: #f1f5f9;
+  border-color: #3f3f46;
 }
 
 :deep(.markdown-body hr) {
   margin: 0.75rem 0;
   border: none;
-  border-top: 1px solid rgba(228, 228, 231, 0.8);
+  border-top: 1px solid #e2e8f0;
 }
 :deep(.dark .markdown-body hr) {
-  border-top-color: rgba(63, 63, 70, 0.8);
+  border-top-color: #27272a;
 }
 
-/* 代码高亮关键字色彩 */
+/* GitHub Dark Theme 语法高亮配色 */
 :deep(.hljs-keyword),
 :deep(.hljs-selector-tag),
 :deep(.hljs-subst) {
-  color: #cf222e;
-  font-weight: 600;
-}
-:deep(.dark .hljs-keyword),
-:deep(.dark .hljs-selector-tag),
-:deep(.dark .hljs-subst) {
   color: #ff7b72;
 }
 
@@ -392,56 +396,28 @@ function fallbackCopy(text: string) {
 :deep(.hljs-template-variable),
 :deep(.hljs-type),
 :deep(.hljs-addition) {
-  color: #0a3069;
-}
-:deep(.dark .hljs-string),
-:deep(.dark .hljs-title),
-:deep(.dark .hljs-section),
-:deep(.dark .hljs-attribute),
-:deep(.dark .hljs-literal),
-:deep(.dark .hljs-template-tag),
-:deep(.dark .hljs-template-variable),
-:deep(.dark .hljs-type),
-:deep(.dark .hljs-addition) {
   color: #a5d6ff;
 }
 
 :deep(.hljs-comment),
 :deep(.hljs-quote),
 :deep(.hljs-deletion) {
-  color: #6e7781;
-  font-style: italic;
-}
-:deep(.dark .hljs-comment),
-:deep(.dark .hljs-quote),
-:deep(.dark .hljs-deletion) {
   color: #8b949e;
+  font-style: italic;
 }
 
 :deep(.hljs-number),
 :deep(.hljs-regexp),
 :deep(.hljs-link) {
-  color: #0550ae;
-}
-:deep(.dark .hljs-number),
-:deep(.dark .hljs-regexp),
-:deep(.dark .hljs-link) {
   color: #79c0ff;
 }
 
 :deep(.hljs-built_in),
 :deep(.hljs-class .hljs-title) {
-  color: #953800;
-}
-:deep(.dark .hljs-built_in),
-:deep(.dark .hljs-class .hljs-title) {
   color: #ffa657;
 }
 
 :deep(.hljs-variable) {
-  color: #953800;
-}
-:deep(.dark .hljs-variable) {
   color: #d2a8ff;
 }
 </style>
