@@ -47,18 +47,21 @@
           :class="msg.role === 'user' ? 'justify-end' : 'justify-start'"
         >
           <div
-            class="max-w-2xl px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap break-words"
+            class="max-w-2xl px-4 py-3 rounded-2xl text-sm leading-relaxed break-words"
             :class="msg.role === 'user'
-              ? 'bg-primary text-white rounded-br-none shadow-sm'
+              ? 'bg-primary text-white rounded-br-none shadow-sm whitespace-pre-wrap'
               : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-100 rounded-bl-none shadow-sm border border-zinc-200/50 dark:border-zinc-700/50'"
           >
-            {{ msg.content }}
+            <template v-if="msg.role === 'user'">
+              {{ msg.content }}
+            </template>
+            <MarkdownViewer v-else :content="msg.content" />
           </div>
         </div>
 
         <div v-if="loading && currentStreamingText" class="flex justify-start">
-          <div class="max-w-2xl px-4 py-3 rounded-2xl rounded-bl-none text-sm leading-relaxed whitespace-pre-wrap break-words bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-100 border border-zinc-200/50 dark:border-zinc-700/50 shadow-sm animate-pulse">
-            {{ currentStreamingText }}
+          <div class="max-w-2xl px-4 py-3 rounded-2xl rounded-bl-none text-sm leading-relaxed break-words bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-100 border border-zinc-200/50 dark:border-zinc-700/50 shadow-sm animate-pulse">
+            <MarkdownViewer :content="currentStreamingText" />
           </div>
         </div>
       </div>
@@ -83,8 +86,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue';
+import { MarkdownViewer } from '#/components/markdown';
 import { getSessionsApi, createSessionApi, deleteSessionApi, getMessagesApi } from '#/api/ai/chat';
-
 interface SessionItem {
   id: string;
   title: string;

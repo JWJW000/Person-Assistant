@@ -237,8 +237,8 @@
             <div class="text-sm font-medium text-zinc-800 dark:text-zinc-200">消息正文：</div>
             <a-button size="small" @click="copyText(activeMessage.content)">一键复制内容</a-button>
           </div>
-          <div class="bg-zinc-100/70 dark:bg-zinc-900 p-4 rounded-lg border border-zinc-200 dark:border-zinc-700 text-sm whitespace-pre-wrap break-words max-h-96 overflow-y-auto font-sans leading-relaxed select-text">
-            {{ activeMessage.content }}
+          <div class="rounded-lg border border-zinc-200 dark:border-zinc-700 select-text overflow-hidden">
+            <MarkdownViewer :content="activeMessage.content" bordered max-height="380px" />
           </div>
         </div>
 
@@ -257,8 +257,12 @@
                 <span>片段 #{{ Number(idx) + 1 }} {{ cit.title ? `· ${cit.title}` : '' }}</span>
                 <span v-if="cit.score" class="font-mono text-blue-600">相似度: {{ (cit.score * 100).toFixed(1) }}%</span>
               </div>
-              <div class="text-zinc-700 dark:text-zinc-300 line-clamp-3">
-                {{ cit.content || cit.snippet || JSON.stringify(cit) }}
+              <div class="text-zinc-700 dark:text-zinc-300">
+                <MarkdownViewer
+                  :content="cit.content || cit.snippet || JSON.stringify(cit)"
+                  compact
+                  max-height="120px"
+                />
               </div>
             </div>
           </div>
@@ -271,6 +275,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
 import { message as antdMessage } from 'antdv-next';
+import { MarkdownViewer } from '#/components/markdown';
 import {
   getMessageListApi,
   deleteMessageApi,

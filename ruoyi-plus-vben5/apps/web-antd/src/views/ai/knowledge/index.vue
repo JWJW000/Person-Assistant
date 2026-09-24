@@ -165,12 +165,20 @@
       >
         <!-- 过滤器与搜索框 (固定在表格上方) -->
         <div class="shrink-0 flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-2">
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-3">
             <a-radio-group v-model:value="chunkFilterType" button-style="solid" size="small" @change="handleFilterChange">
               <a-radio-button value="all">全部类型 ({{ chunkPagination.total }})</a-radio-button>
               <a-radio-button value="qa">仅看 QA 问答对</a-radio-button>
               <a-radio-button value="text">仅看长文本切片</a-radio-button>
             </a-radio-group>
+
+            <div class="flex items-center gap-1.5 pl-2 border-l border-zinc-200 dark:border-zinc-700">
+              <span class="text-xs text-zinc-500 font-medium select-none">正文显示:</span>
+              <a-radio-group v-model:value="tableRenderMode" button-style="solid" size="small">
+                <a-radio-button value="markdown">✨ Markdown 预览</a-radio-button>
+                <a-radio-button value="raw">📝 纯文本</a-radio-button>
+              </a-radio-group>
+            </div>
           </div>
 
           <div class="flex items-center gap-2">
@@ -213,19 +221,57 @@
               </template>
 
               <template v-else-if="column.key === 'titleOrQuestion'">
-                <div v-if="record.chunkType === 'qa'" class="font-medium text-sm text-purple-900 dark:text-purple-300">
-                  <span class="font-bold text-purple-600 mr-1.5">Q:</span>
+                <div
+                  v-if="record.chunkType === 'qa'"
+                  class="font-medium text-sm text-purple-900 dark:text-purple-300 cursor-pointer hover:underline flex items-baseline gap-1"
+                  title="点击查看 QA 问答对 Markdown 渲染预览"
+                  @click="openPreviewModal(record)"
+                >
+                  <span class="font-bold text-purple-600 shrink-0">Q:</span>
                   <span class="select-text">{{ record.question || '-' }}</span>
                 </div>
-                <div v-else class="text-xs text-zinc-600 dark:text-zinc-400 font-mono">
+                <div
+                  v-else
+                  class="text-xs text-zinc-600 dark:text-zinc-400 font-mono cursor-pointer hover:text-blue-600 hover:underline"
+                  title="点击查看文本切片 Markdown 渲染预览"
+                  @click="openPreviewModal(record)"
+                >
                   {{ record.question || `#${record.chunkOrder || 1} 文本片段` }}
                 </div>
               </template>
 
               <template v-else-if="column.key === 'content'">
-                <div class="text-xs leading-relaxed max-h-24 overflow-y-auto whitespace-pre-wrap font-mono bg-zinc-50 dark:bg-zinc-900/90 p-2.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800 select-text">
-                  <span v-if="record.chunkType === 'qa'" class="font-bold text-emerald-600 mr-1.5">A:</span>
-                  {{ record.content }}
+                <div class="relative group bg-zinc-50/70 dark:bg-zinc-900/80 p-2.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800 select-text transition-all hover:border-zinc-300 dark:hover:border-zinc-700">
+                  <div class="flex items-center justify-between mb-1.5 pb-1 border-b border-zinc-200/50 dark:border-zinc-800/60 text-[11px] select-none">
+                    <span v-if="record.chunkType === 'qa'" class="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                      <span>A (标准回答)</span>
+                    </span>
+                    <span v-else class="font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                      <span>切片正文</span>
+                    </span>
+                    <a-button
+                      type="link"
+                      size="small"
+                      class="p-0 h-auto text-[11px] text-zinc-400 hover:text-blue-600"
+                      @click="openPreviewModal(record)"
+                    >
+                      🔍 独立预览
+                    </a-button>
+                  </div>
+
+                  <!-- Markdown 渲染 vs 纯文本 -->
+                  <MarkdownViewer
+                    v-if="tableRenderMode === 'markdown'"
+                    :content="record.content"
+                    compact
+                    max-height="110px"
+                  />
+                  <div
+                    v-else
+                    class="text-xs leading-relaxed max-h-24 overflow-y-auto whitespace-pre-wrap font-mono"
+                  >
+                    {{ record.content }}
+                  </div>
                 </div>
               </template>
 
@@ -239,6 +285,9 @@
 
               <template v-else-if="column.key === 'action'">
                 <a-space>
+                  <a-button type="link" size="small" @click="openPreviewModal(record)">
+                    预览
+                  </a-button>
                   <a-button type="link" size="small" @click="openEditChunkModal(record)">
                     编辑
                   </a-button>
@@ -326,30 +375,70 @@
               placeholder="例如：我女朋友是谁？/ 公司的年假如何计算？"
             />
           </a-form-item>
-          <a-form-item label="标准答案 (A)" required extra="大模型命中本词条后将直接作为事实依据回答用户">
-            <a-textarea
-              v-model:value="chunkFormData.content"
-              placeholder="例如：你女朋友是王宇静。/ 员工入职满一年享有 5 天带薪年假..."
-              :rows="5"
-            />
-          </a-form-item>
+          <div class="mb-4">
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="text-sm text-zinc-800 dark:text-zinc-200 font-medium">
+                <span class="text-red-500 mr-1">*</span>标准答案 (A)
+              </label>
+              <a-radio-group v-model:value="chunkAnswerMode" size="small" button-style="solid">
+                <a-radio-button value="edit">✏️ 编辑回答</a-radio-button>
+                <a-radio-button value="preview">👁️ Markdown 实时预览</a-radio-button>
+              </a-radio-group>
+            </div>
+            <div v-show="chunkAnswerMode === 'edit'">
+              <a-textarea
+                v-model:value="chunkFormData.content"
+                placeholder="例如：你女朋友是王宇静。/ 员工入职满一年享有 5 天带薪年假...\n支持 Markdown 语法（标题、代码块、表格、加粗、列表等）"
+                :rows="6"
+              />
+              <div class="text-[11px] text-zinc-400 mt-1">
+                大模型命中本词条后将直接作为事实依据回答用户。支持标准 Markdown 语法。
+              </div>
+            </div>
+            <div v-show="chunkAnswerMode === 'preview'">
+              <MarkdownViewer
+                :content="chunkFormData.content"
+                bordered
+                max-height="240px"
+                empty-text="（暂无输入内容，请先在编辑模式下输入标准回答）"
+              />
+            </div>
+          </div>
         </template>
 
         <template v-else>
           <a-form-item label="文档 / 切片标题" extra="便于管理与检索结果引用展示">
             <a-input v-model:value="chunkFormData.title" placeholder="例如：2026年出差差旅报销标准" />
           </a-form-item>
-          <a-form-item
-            label="长文本正文内容"
-            required
-            :extra="`系统将按当前知识库设置（切片大小: ${activeKb?.chunkSize || 500}字符，重叠: ${activeKb?.chunkOverlap || 50}字符）自动切片并生成向量`"
-          >
-            <a-textarea
-              v-model:value="chunkFormData.content"
-              placeholder="请粘贴大段技术手册、规章制度、操作规范或产品介绍文本..."
-              :rows="8"
-            />
-          </a-form-item>
+          <div class="mb-4">
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="text-sm text-zinc-800 dark:text-zinc-200 font-medium">
+                <span class="text-red-500 mr-1">*</span>长文本正文内容
+              </label>
+              <a-radio-group v-model:value="chunkTextMode" size="small" button-style="solid">
+                <a-radio-button value="edit">✏️ 编辑正文</a-radio-button>
+                <a-radio-button value="preview">👁️ Markdown 实时预览</a-radio-button>
+              </a-radio-group>
+            </div>
+            <div v-show="chunkTextMode === 'edit'">
+              <a-textarea
+                v-model:value="chunkFormData.content"
+                placeholder="请粘贴大段技术手册、规章制度、操作规范或产品介绍文本（支持 Markdown 语法）..."
+                :rows="8"
+              />
+              <div class="text-[11px] text-zinc-400 mt-1">
+                系统将按当前知识库设置（切片大小: {{ activeKb?.chunkSize || 500 }}字符，重叠: {{ activeKb?.chunkOverlap || 50 }}字符）自动切片并生成向量
+              </div>
+            </div>
+            <div v-show="chunkTextMode === 'preview'">
+              <MarkdownViewer
+                :content="chunkFormData.content"
+                bordered
+                max-height="260px"
+                empty-text="（暂无长文本内容，请先在编辑模式下输入正文）"
+              />
+            </div>
+          </div>
         </template>
       </a-form>
     </a-modal>
@@ -376,28 +465,168 @@
               placeholder="输入标准问题..."
             />
           </a-form-item>
-          <a-form-item label="标准答案 (A)" required extra="大模型以此答案为知识依据">
-            <a-textarea
-              v-model:value="editingChunkData.content"
-              placeholder="输入标准回答..."
-              :rows="6"
-            />
-          </a-form-item>
+          <div class="mb-4">
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="text-sm text-zinc-800 dark:text-zinc-200 font-medium">
+                <span class="text-red-500 mr-1">*</span>标准答案 (A)
+              </label>
+              <a-radio-group v-model:value="editAnswerMode" size="small" button-style="solid">
+                <a-radio-button value="edit">✏️ 编辑回答</a-radio-button>
+                <a-radio-button value="preview">👁️ Markdown 实时预览</a-radio-button>
+              </a-radio-group>
+            </div>
+            <div v-show="editAnswerMode === 'edit'">
+              <a-textarea
+                v-model:value="editingChunkData.content"
+                placeholder="输入标准回答（支持 Markdown 语法）..."
+                :rows="7"
+              />
+              <div class="text-[11px] text-zinc-400 mt-1">
+                大模型以此答案为知识依据。支持 Markdown 语法。
+              </div>
+            </div>
+            <div v-show="editAnswerMode === 'preview'">
+              <MarkdownViewer
+                :content="editingChunkData.content"
+                bordered
+                max-height="250px"
+                empty-text="（暂无回答内容）"
+              />
+            </div>
+          </div>
         </template>
 
         <template v-else>
           <a-form-item label="标准问题 / 标题 (可选)">
             <a-input v-model:value="editingChunkData.question" placeholder="切片简要标题或问题描述" />
           </a-form-item>
-          <a-form-item label="切片正文内容" required extra="保存后将自动重新计算并同步更新向量嵌入">
-            <a-textarea
-              v-model:value="editingChunkData.content"
-              placeholder="切片正文内容..."
-              :rows="7"
-            />
-          </a-form-item>
+          <div class="mb-4">
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="text-sm text-zinc-800 dark:text-zinc-200 font-medium">
+                <span class="text-red-500 mr-1">*</span>切片正文内容
+              </label>
+              <a-radio-group v-model:value="editTextMode" size="small" button-style="solid">
+                <a-radio-button value="edit">✏️ 编辑正文</a-radio-button>
+                <a-radio-button value="preview">👁️ Markdown 实时预览</a-radio-button>
+              </a-radio-group>
+            </div>
+            <div v-show="editTextMode === 'edit'">
+              <a-textarea
+                v-model:value="editingChunkData.content"
+                placeholder="切片正文内容（支持 Markdown 语法）..."
+                :rows="8"
+              />
+              <div class="text-[11px] text-zinc-400 mt-1">
+                保存后将自动重新计算并同步更新向量嵌入。
+              </div>
+            </div>
+            <div v-show="editTextMode === 'preview'">
+              <MarkdownViewer
+                :content="editingChunkData.content"
+                bordered
+                max-height="260px"
+                empty-text="（暂无切片正文内容）"
+              />
+            </div>
+          </div>
         </template>
       </a-form>
+    </a-modal>
+
+    <!-- 弹窗：知识条目 / QA 问答对独立 Markdown 渲染预览 -->
+    <a-modal
+      v-model:open="previewModalVisible"
+      :title="previewModalTitle"
+      :footer="null"
+      width="800px"
+      destroy-on-close
+    >
+      <div v-if="previewChunkData" class="space-y-4 py-1">
+        <!-- 顶部元数据胶囊栏 -->
+        <div class="flex flex-wrap items-center justify-between gap-2 p-3 bg-zinc-50 dark:bg-zinc-800/60 rounded-xl border border-zinc-200/80 dark:border-zinc-700 text-xs">
+          <div class="flex items-center gap-2">
+            <a-tag :color="previewChunkData.chunkType === 'qa' ? 'purple' : 'blue'" class="font-bold text-xs m-0">
+              {{ previewChunkData.chunkType === 'qa' ? 'QA 问答对' : '普通长文本切片' }}
+            </a-tag>
+            <span class="font-mono text-zinc-500">ID: #{{ previewChunkData.id }}</span>
+            <span class="text-zinc-300 dark:text-zinc-600">|</span>
+            <span class="text-zinc-500 font-mono">{{ previewChunkData.tokenCount || previewChunkData.content?.length || 0 }} 字符</span>
+          </div>
+          <div class="flex items-center gap-3 text-zinc-400 font-mono text-[11px]">
+            <span>录入: {{ formatDateTime(previewChunkData.createTime) }}</span>
+            <span v-if="activeKb">所属知识库: {{ activeKb.name }}</span>
+          </div>
+        </div>
+
+        <!-- QA 模式下的问题展示 -->
+        <div v-if="previewChunkData.chunkType === 'qa'" class="p-3 bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200/80 dark:border-purple-900/40 rounded-xl">
+          <div class="text-xs font-bold text-purple-700 dark:text-purple-300 mb-1.5 flex items-center gap-1.5">
+            <span>🟣 标准问题 (Question)</span>
+          </div>
+          <div class="text-sm font-semibold text-zinc-800 dark:text-zinc-100 select-text">
+            {{ previewChunkData.question || '（未设置问题）' }}
+          </div>
+        </div>
+
+        <!-- 文本切片模式下的标题展示 -->
+        <div v-else-if="previewChunkData.question" class="p-3 bg-blue-50/40 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-900/40 rounded-xl">
+          <div class="text-xs font-bold text-blue-700 dark:text-blue-300 mb-1 flex items-center gap-1.5">
+            <span>🔵 片段标题 / 索引词</span>
+          </div>
+          <div class="text-sm font-medium text-zinc-800 dark:text-zinc-100 select-text">
+            {{ previewChunkData.question }}
+          </div>
+        </div>
+
+        <!-- 正文 / 回答展示区域 -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <div class="text-xs font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+              <span v-if="previewChunkData.chunkType === 'qa'">🟢 标准回答 (Answer) 内容预览</span>
+              <span v-else>📄 知识片段正文内容预览</span>
+            </div>
+            <!-- 模式切换：Markdown 渲染 vs 原始源码 -->
+            <div class="flex items-center gap-2">
+              <a-radio-group v-model:value="previewViewMode" size="small" button-style="solid">
+                <a-radio-button value="render">✨ Markdown 渲染</a-radio-button>
+                <a-radio-button value="source">📝 原始文本</a-radio-button>
+              </a-radio-group>
+            </div>
+          </div>
+
+          <!-- Markdown 渲染 -->
+          <MarkdownViewer
+            v-if="previewViewMode === 'render'"
+            :content="previewChunkData.content"
+            bordered
+            copyable
+            max-height="420px"
+          />
+
+          <!-- 原始文本展示 -->
+          <div
+            v-else
+            class="p-3.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 max-h-[420px] overflow-y-auto font-mono text-xs leading-relaxed whitespace-pre-wrap select-text text-zinc-700 dark:text-zinc-300"
+          >
+            {{ previewChunkData.content }}
+          </div>
+        </div>
+
+        <!-- 底部操作按钮 -->
+        <div class="flex items-center justify-between pt-3 border-t border-zinc-200/80 dark:border-zinc-800">
+          <a-button @click="copyText(previewChunkData.content)">
+            📋 复制正文内容
+          </a-button>
+          <a-space>
+            <a-button @click="previewModalVisible = false">
+              关闭
+            </a-button>
+            <a-button type="primary" @click="handleEditFromPreview">
+              ✏️ 编辑此条目
+            </a-button>
+          </a-space>
+        </div>
+      </div>
     </a-modal>
 
     <!-- 抽屉：语义向量检索沙盒测试 -->
@@ -447,23 +676,33 @@
           <div
             v-for="(item, idx) in searchResults"
             :key="idx"
-            class="p-3 bg-zinc-50 dark:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-zinc-700 space-y-1.5 text-xs"
+            class="p-3 bg-zinc-50 dark:bg-zinc-800/80 rounded-xl border border-zinc-200 dark:border-zinc-700 space-y-2 text-xs"
           >
             <div class="flex justify-between items-center">
-              <span class="font-bold text-blue-600">
+              <span class="font-bold text-blue-600 dark:text-blue-400">
                 #{{ idx + 1 }}
                 <a-tag v-if="item.chunkType === 'qa'" color="purple" class="ml-1">QA问答</a-tag>
                 <a-tag v-else color="blue" class="ml-1">文本切片</a-tag>
               </span>
-              <a-tag color="cyan" class="font-mono font-bold">
-                相似度: {{ ((item.score || 0) * 100).toFixed(1) }}%
-              </a-tag>
+              <div class="flex items-center gap-1.5">
+                <a-tag color="cyan" class="font-mono font-bold">
+                  相似度: {{ ((item.score || 0) * 100).toFixed(1) }}%
+                </a-tag>
+                <a-button type="link" size="small" class="p-0 h-auto text-xs" @click="openPreviewModal(item)">
+                  独立预览
+                </a-button>
+              </div>
             </div>
-            <div v-if="item.question" class="text-purple-700 dark:text-purple-300 font-semibold">
-              Q: {{ item.question }}
+            <div v-if="item.question" class="text-purple-700 dark:text-purple-300 font-semibold flex items-center gap-1">
+              <span class="font-bold">Q:</span>
+              <span>{{ item.question }}</span>
             </div>
-            <div class="text-zinc-600 dark:text-zinc-300 whitespace-pre-wrap font-mono text-[11px] leading-relaxed bg-white dark:bg-zinc-900 p-2 rounded border border-zinc-100 dark:border-zinc-800">
-              {{ item.content }}
+            <div class="bg-white dark:bg-zinc-900 p-2.5 rounded-lg border border-zinc-200/70 dark:border-zinc-800">
+              <MarkdownViewer
+                :content="item.content"
+                compact
+                max-height="160px"
+              />
             </div>
           </div>
         </div>
@@ -473,8 +712,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { message as antdMessage } from 'antdv-next';
+import { MarkdownViewer } from '#/components/markdown';
 import {
   getKnowledgeBasesApi,
   createKnowledgeBaseApi,
@@ -488,7 +728,6 @@ import {
   type KnowledgeBase,
   type KnowledgeChunk,
 } from '#/api/ai/knowledge';
-
 const message = {
   success: (msg: string) => {
     if (typeof window !== 'undefined' && (window as any).message?.success) {
@@ -557,7 +796,7 @@ const chunkColumns = [
   { title: '知识正文 / 标准回答 (A)', key: 'content', ellipsis: false },
   { title: '字数', key: 'tokenCount', width: 90 },
   { title: '录入时间', key: 'createTime', width: 160 },
-  { title: '操作', key: 'action', width: 130, fixed: 'right' },
+  { title: '操作', key: 'action', width: 180, fixed: 'right' },
 ];
 
 const chunkList = ref<KnowledgeChunk[]>([]);
@@ -590,6 +829,28 @@ const editingChunkData = reactive({
   content: '',
 });
 
+// 表格正文显示模式: 'markdown' (渲染预览) 或 'raw' (纯文本源码)
+const tableRenderMode = ref<'markdown' | 'raw'>('markdown');
+
+// 新增弹窗回答/正文模式
+const chunkAnswerMode = ref<'edit' | 'preview'>('edit');
+const chunkTextMode = ref<'edit' | 'preview'>('edit');
+
+// 编辑弹窗回答/正文模式
+const editAnswerMode = ref<'edit' | 'preview'>('edit');
+const editTextMode = ref<'edit' | 'preview'>('edit');
+
+// 独立 Markdown 预览弹窗状态
+const previewModalVisible = ref(false);
+const previewChunkData = ref<KnowledgeChunk | null>(null);
+const previewViewMode = ref<'render' | 'source'>('render');
+
+const previewModalTitle = computed(() => {
+  if (!previewChunkData.value) return '知识内容预览';
+  return previewChunkData.value.chunkType === 'qa'
+    ? '💬 QA 问答对 · Markdown 渲染预览'
+    : '📄 知识片段 · Markdown 渲染预览';
+});
 // 检索沙盒状态
 const searchDrawerVisible = ref(false);
 const searchQuery = ref('');
@@ -729,6 +990,8 @@ function openAddKnowledgeModal(type: 'qa' | 'text' = 'qa') {
   chunkFormData.question = '';
   chunkFormData.title = '';
   chunkFormData.content = '';
+  chunkAnswerMode.value = 'edit';
+  chunkTextMode.value = 'edit';
   chunkModalVisible.value = true;
 }
 
@@ -738,9 +1001,52 @@ function openEditChunkModal(record: KnowledgeChunk) {
   editingChunkData.chunkType = record.chunkType || 'text';
   editingChunkData.question = record.question || '';
   editingChunkData.content = record.content || '';
+  editAnswerMode.value = 'edit';
+  editTextMode.value = 'edit';
   editChunkModalVisible.value = true;
 }
 
+function openPreviewModal(record: KnowledgeChunk) {
+  previewChunkData.value = record;
+  previewViewMode.value = 'render';
+  previewModalVisible.value = true;
+}
+
+function handleEditFromPreview() {
+  if (!previewChunkData.value) return;
+  const chunk = previewChunkData.value;
+  previewModalVisible.value = false;
+  openEditChunkModal(chunk);
+}
+
+function copyText(text?: string) {
+  if (!text) return;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      message.success('已复制到剪贴板');
+    }).catch(() => {
+      fallbackCopy(text);
+    });
+  } else {
+    fallbackCopy(text);
+  }
+}
+
+function fallbackCopy(text: string) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    message.success('已复制到剪贴板');
+  } catch {
+    message.error('复制失败，请手动选中文本');
+  }
+}
 async function handleSaveEditChunk() {
   if (!editingChunkData.id) return;
   if (editingChunkData.chunkType === 'qa') {
