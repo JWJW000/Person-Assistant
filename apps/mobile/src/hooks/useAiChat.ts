@@ -78,7 +78,15 @@ export function useAiChat({
     sendingRef.current = false;
     setLoading(false);
     setMessages((prev) =>
-      prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m))
+      prev.map((m) =>
+        m.isStreaming
+          ? {
+              ...m,
+              isStreaming: false,
+              content: m.content || '（已停止生成）',
+            }
+          : m
+      )
     );
   }, []);
 
@@ -182,6 +190,22 @@ export function useAiChat({
         kbId: activeKbId,
         modelId: activeModelId,
         signal: controller.signal,
+        onStatus: (status) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === asstMsgId ? { ...m, statusText: status } : m
+            )
+          );
+        },
+        onThinking: () => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === asstMsgId && !m.content
+                ? { ...m, statusText: '正在深度推理回答中...' }
+                : m
+            )
+          );
+        },
         onChunk: (chunk) => {
           accumulated += chunk;
           const currentTime = performance.now();
@@ -195,10 +219,6 @@ export function useAiChat({
           }
         },
         onError: (err: unknown) => {
-          flushStreamBuffer(true);
-          setLoading(false);
-          sendingRef.current = false;
-          abortControllerRef.current = null;
           const errMsg = err instanceof Error ? err.message : String(err);
           if (
             errMsg.includes('401') ||
@@ -208,9 +228,19 @@ export function useAiChat({
             logout();
             return;
           }
+          if (!accumulated.trim()) {
+            accumulated = '抱歉，服务响应超时或网络连接中断，请重试。';
+          }
+          flushStreamBuffer(true);
+          setLoading(false);
+          sendingRef.current = false;
+          abortControllerRef.current = null;
           console.warn('生成出错:', err);
         },
         onDone: () => {
+          if (!accumulated.trim() && !controller.signal.aborted) {
+            accumulated = '未能获取到回复内容，请重试。';
+          }
           flushStreamBuffer(true);
           setLoading(false);
           sendingRef.current = false;

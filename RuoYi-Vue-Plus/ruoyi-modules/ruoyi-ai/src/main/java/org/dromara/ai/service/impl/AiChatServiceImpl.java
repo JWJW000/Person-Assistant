@@ -33,7 +33,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 /**
  * AI 对话核心服务实现
  */
@@ -137,7 +139,7 @@ public class AiChatServiceImpl implements IAiChatService {
     @Override
     public SseEmitter streamChat(String sessionId, String userMessage, Long kbId, Long modelId) {
         Long userId = LoginHelper.getUserId();
-        SseEmitter emitter = new SseEmitter(180_000L); // 3分钟超时
+        SseEmitter emitter = new SseEmitter(300_000L); // 5分钟超时
 
         // 1. 保存用户的提问消息入库
         AiChatMessage userMsg = new AiChatMessage();
@@ -162,6 +164,18 @@ public class AiChatServiceImpl implements IAiChatService {
 
         // 3. 异步触发大模型流式调用并 SSE 下发
         CompletableFuture.runAsync(() -> {
+            // 立即发送初始化注释行，促使 Spring/Jetty 立即将 HTTP 200 及 text/event-stream 响应头下发给 Nginx/Cloudflare/客户端
+            try {
+                emitter.send(SseEmitter.event().comment("open"));
+            } catch (Exception ignored) {}
+
+            ScheduledExecutorService heartbeatExecutor = Executors.newSingleThreadScheduledExecutor();
+            heartbeatExecutor.scheduleAtFixedRate(() -> {
+                try {
+                    emitter.send(SseEmitter.event().comment("ping"));
+                } catch (Exception ignored) {}
+            }, 2, 2, TimeUnit.SECONDS);
+
             StringBuilder assistantReply = new StringBuilder();
             long startTime = System.currentTimeMillis();
             AiModelConfig config = null;
@@ -224,6 +238,9 @@ public class AiChatServiceImpl implements IAiChatService {
                 String promptToSend = userMessage;
                 if (kbId != null && kbId > 0) {
                     try {
+                        try {
+                            emitter.send(SseEmitter.event().name("status").data("正在检索知识库..."));
+                        } catch (Exception ignored) {}
                         ragChunks = knowledgeService.searchChunks(kbId, userMessage, 3, 0.2);
                         if (ragChunks != null && !ragChunks.isEmpty()) {
                             StringBuilder ctx = new StringBuilder("【已知背景信息与记忆事实】:\n");
@@ -269,6 +286,9 @@ public class AiChatServiceImpl implements IAiChatService {
                 boolean shouldQueryTrain = isTrainQuery(userMessage) || (hasTrainHistory && looksLikeTrainFollowup(userMessage));
                 if (shouldQueryTrain) {
                     try {
+                        try {
+                            emitter.send(SseEmitter.event().name("status").data("正在查询 12306 实时车票..."));
+                        } catch (Exception ignored) {}
                         String mcpResp = callMcpTrainQuery(userMessage, history, userProfileForMcp);
                         if (StringUtils.isNotBlank(mcpResp)) {
                             cn.hutool.json.JSONObject mcpObj = cn.hutool.json.JSONUtil.parseObj(mcpResp);
@@ -411,6 +431,7 @@ public class AiChatServiceImpl implements IAiChatService {
                 } catch (Exception ignored) {
                 }
             } finally {
+                heartbeatExecutor.shutdownNow();
                 // 4. 助手回答落库 (只要有生成内容均完整落库持久化)
                 if (assistantReply.length() > 0) {
                     try {
@@ -656,15 +677,30 @@ public class AiChatServiceImpl implements IAiChatService {
                         cn.hutool.json.JSONArray choices = obj.getJSONArray("choices");
                         if (choices != null && !choices.isEmpty()) {
                             cn.hutool.json.JSONObject delta = choices.getJSONObject(0).getJSONObject("delta");
-                            if (delta != null && delta.containsKey("content")) {
-                                String content = delta.getStr("content");
-                                if (content != null) {
-                                    assistantReply.append(content);
-                                    try {
-                                        emitter.send(SseEmitter.event().data(content));
-                                    } catch (Exception sseEx) {
-                                        log.warn("SSE 客户端连接中断: {}", sseEx.getMessage());
-                                        break;
+                            if (delta != null) {
+                                // 1. 深度推理思维链 token 下发
+                                if (delta.containsKey("reasoning_content")) {
+                                    String reasoning = delta.getStr("reasoning_content");
+                                    if (StringUtils.isNotBlank(reasoning)) {
+                                        try {
+                                            emitter.send(SseEmitter.event().name("thinking").data(reasoning));
+                                        } catch (Exception sseEx) {
+                                            log.warn("SSE 客户端连接中断: {}", sseEx.getMessage());
+                                            break;
+                                        }
+                                    }
+                                }
+                                // 2. 正式回答内容 token 下发
+                                if (delta.containsKey("content")) {
+                                    String content = delta.getStr("content");
+                                    if (content != null) {
+                                        assistantReply.append(content);
+                                        try {
+                                            emitter.send(SseEmitter.event().data(content));
+                                        } catch (Exception sseEx) {
+                                            log.warn("SSE 客户端连接中断: {}", sseEx.getMessage());
+                                            break;
+                                        }
                                     }
                                 }
                             }

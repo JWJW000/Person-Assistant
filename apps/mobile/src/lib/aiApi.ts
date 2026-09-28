@@ -247,11 +247,12 @@ export interface StreamChatOptions {
   kbId?: number | null;
   modelId?: number | null;
   onChunk: (chunk: string) => void;
+  onThinking?: (chunk: string) => void;
+  onStatus?: (status: string) => void;
   onDone: () => void;
   onError: (err: any) => void;
   signal?: AbortSignal;
 }
-
 /**
  * 打字机流式对话 (支持中转站指定大模型与 RAG 知识库检索)
  */
@@ -293,6 +294,7 @@ export async function streamAiChat(options: StreamChatOptions): Promise<void> {
     const reader = res.body.getReader();
     const decoder = new TextDecoder('utf-8');
     let buffer = '';
+    let currentEvent = '';
 
     while (true) {
       const { done, value } = await reader.read();
@@ -304,18 +306,27 @@ export async function streamAiChat(options: StreamChatOptions): Promise<void> {
 
       for (const line of lines) {
         const trimmed = line.trim();
-        if (!trimmed) continue;
+        if (!trimmed || trimmed.startsWith(':')) continue;
+
+        if (trimmed.startsWith('event:')) {
+          currentEvent = trimmed.slice(6).trim();
+          continue;
+        }
 
         if (trimmed.startsWith('data:')) {
           const dataContent = trimmed.slice(5).trim();
-          if (dataContent === '[DONE]') {
+          if (dataContent === '[DONE]' || currentEvent === 'done') {
             onDone();
             return;
           }
-          onChunk(dataContent);
-        } else if (trimmed.startsWith('event:done') || trimmed.startsWith('event: done')) {
-          onDone();
-          return;
+          if (currentEvent === 'thinking') {
+            options.onThinking?.(dataContent);
+          } else if (currentEvent === 'status') {
+            options.onStatus?.(dataContent);
+          } else {
+            onChunk(dataContent);
+          }
+          currentEvent = '';
         }
       }
     }
@@ -323,7 +334,13 @@ export async function streamAiChat(options: StreamChatOptions): Promise<void> {
     if (buffer.trim().startsWith('data:')) {
       const remaining = buffer.trim().slice(5).trim();
       if (remaining && remaining !== '[DONE]') {
-        onChunk(remaining);
+        if (currentEvent === 'thinking') {
+          options.onThinking?.(remaining);
+        } else if (currentEvent === 'status') {
+          options.onStatus?.(remaining);
+        } else {
+          onChunk(remaining);
+        }
       }
     }
 

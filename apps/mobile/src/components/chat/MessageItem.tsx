@@ -13,6 +13,7 @@ export interface DisplayMessage {
   content: string;
   tickets?: TrainTicket[];
   isStreaming?: boolean;
+  statusText?: string;
   createTime?: string;
   /** true = 历史消息加载，跳过入场动画 */
   skipAnimation?: boolean;
@@ -69,7 +70,7 @@ export const MessageItem = React.memo<MessageItemProps>(
                   <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-wave-3" />
                 </div>
                 <span className="font-mono text-xs text-slate-400">
-                  {activeKbId ? '正在检索知识库并思考...' : '正在深度思考并组织回答...'}
+                  {msg.statusText || (activeKbId ? '正在检索知识库并思考...' : '正在深度思考并组织回答...')}
                 </span>
               </div>
             ) : (
@@ -207,6 +208,7 @@ export const MessageItem = React.memo<MessageItemProps>(
     return (
       prev.msg.content === next.msg.content &&
       prev.msg.isStreaming === next.msg.isStreaming &&
+      prev.msg.statusText === next.msg.statusText &&
       prev.msg.tickets === next.msg.tickets &&
       prev.isExpanded === next.isExpanded &&
       prev.isCopied === next.isCopied &&
