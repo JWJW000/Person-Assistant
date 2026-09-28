@@ -6,25 +6,13 @@ export function handle401Unauthorized() {
   store.logout();
 }
 import { CLIENT_ID } from './auth';
-import { KnowledgeBaseItem, AiModelItem } from '../store';
-
-export interface AiSessionItem {
-  id: string;
-  title: string;
-  lastMessagePreview?: string;
-  messageCount?: number;
-  createTime?: string;
-  updateTime?: string;
-}
-
-export interface AiMessageItem {
-  id: number | string;
-  sessionId: string;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  status?: string;
-  createTime?: string;
-}
+import type {
+  AiSessionItem,
+  AiMessageItem,
+  KnowledgeBaseItem,
+  AiModelItem
+} from '@assistant/contracts';
+export type { AiSessionItem, AiMessageItem, KnowledgeBaseItem, AiModelItem };
 
 // 中转站 (https://newapi.5wjw.cn) 预置与保底可用模型列表 (27款主流模型)
 export const DEFAULT_RELAY_MODELS: AiModelItem[] = [

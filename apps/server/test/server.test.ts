@@ -139,4 +139,19 @@ describe('Server HTTP API & Auth Integration', () => {
     expect(json2.items).toHaveLength(1);
     expect(json2.items[0].seq).toBe(2);
   });
+
+  it('POST /internal/train/query requires clarification when cities cannot be inferred', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/internal/train/query',
+      payload: {
+        userMessage: '帮我查查票'
+      }
+    });
+    expect(res.statusCode).toBe(200);
+    const json = JSON.parse(res.payload);
+    expect(json.success).toBe(false);
+    expect(json.requiresClarification).toBe(true);
+    expect(json.message).toBe('请说明出发城市与到达城市');
+  });
 });

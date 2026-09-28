@@ -1,20 +1,16 @@
 import { copyToClipboard } from '../lib/clipboard';
 import { triggerHaptic } from '../lib/ripple';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useAppStore, AiModelItem } from '../store';
+import { useAppStore, type AiModelItem } from '../store';
 import { ConversationDrawer } from '../components/ConversationDrawer';
-import { TicketCard } from '../components/TicketCard';
-import { RouteModal, RouteStation } from '../components/RouteModal';
-import { TrainTicket } from '@assistant/contracts';
+import { RouteModal, type RouteStation } from '../components/RouteModal';
+import type { TrainTicket } from '@assistant/contracts';
 import {
   fetchKnowledgeBases,
   fetchChatModels,
   setDefaultModel,
   fetchAiSessions,
-  createAiSession,
-  fetchAiMessages,
   deleteAiSession,
-  streamAiChat,
 } from '../lib/aiApi';
 import {
   ArrowUp,
@@ -22,11 +18,7 @@ import {
   PanelLeft,
   SquarePen,
   ChevronDown,
-  ChevronUp,
-  Check,
   Plus,
-  Copy,
-  RotateCcw,
   BookOpen,
   ArrowUpRight,
   Database,
@@ -34,89 +26,8 @@ import {
   CheckCircle2,
   X,
 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-
-function tryParseTicketsFromText(text: string): TrainTicket[] {
-  if (!text || text.length < 10) return [];
-  if (!text.includes("\`\`\`") && !/[GCDTZK]\d{1,4}/.test(text)) return [];
-  const tickets: TrainTicket[] = [];
-
-  const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-  if (jsonMatch) {
-    try {
-      const parsed = JSON.parse(jsonMatch[1]);
-      if (Array.isArray(parsed.tickets)) return parsed.tickets;
-      if (Array.isArray(parsed)) {
-        const valid = parsed.filter((t: any) => t && t.trainCode);
-        if (valid.length > 0) return valid;
-      }
-    } catch {}
-  }
-
-  const trainRegex = /([GCDTZK]\d{1,4})[次\s:：(（]*([\u4e00-\u9fa5]{2,6})[\s站]*[)）]*[\s,，]*([0-2]?\d:[0-5]\d)[\s~至\->→到]+([\u4e00-\u9fa5]{2,6})[\s站]*[)）]*[\s,，]*([0-2]?\d:[0-5]\d)/g;
-  let match;
-  let idx = 1;
-
-  while ((match = trainRegex.exec(text)) !== null && tickets.length < 8) {
-    const trainCode = match[1];
-    const fromStation = match[2].replace(/站$/, '');
-    const depTime = match[3];
-    const toStation = match[4].replace(/站$/, '');
-    const arrTime = match[5];
-
-    const [depH, depM] = depTime.split(':').map(Number);
-    const [arrH, arrM] = arrTime.split(':').map(Number);
-    let durMin = (arrH * 60 + arrM) - (depH * 60 + depM);
-    let dayDiff = 0;
-    if (durMin < 0) {
-      durMin += 24 * 60;
-      dayDiff = 1;
-    }
-
-    tickets.push({
-      id: `parsed-ticket-${trainCode}-${idx++}`,
-      trainCode,
-      trainNo: trainCode,
-      from: { code: 'FROM', name: fromStation },
-      to: { code: 'TO', name: toStation },
-      departureAt: `2026-09-20T${depTime}:00+08:00`,
-      arrivalAt: `2026-09-20T${arrTime}:00+08:00`,
-      durationMinutes: durMin > 0 ? durMin : 268,
-      dayDiff,
-      seats: [
-        { kind: '二等座', availability: 'available' as const, count: 18, priceMinor: 66200, currency: 'CNY' as const },
-        { kind: '一等座', availability: 'available' as const, count: 6, priceMinor: 106000, currency: 'CNY' as const },
-        { kind: '商务座', availability: 'waitlist' as const, count: 0, priceMinor: 231800, currency: 'CNY' as const },
-        { kind: '无座', availability: 'available' as const, count: 99, priceMinor: 66200, currency: 'CNY' as const }
-      ],
-      scheduleReference: false,
-      matchLabels: ['智能车次', '时刻对齐']
-    });
-  }
-
-  return tickets;
-}
-
-interface DisplayMessage {
-  id: string | number;
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  tickets?: TrainTicket[];
-  isStreaming?: boolean;
-  createTime?: string;
-  /** true = 历史消息加载，跳过入场动画 */
-  skipAnimation?: boolean;
-}
-
-function cleanDisplayContent(text: string): string {
-  if (!text) return "";
-  // 如果文本中包含了 12306 车票数据，将大段 raw JSON 从自然语言 Markdown 渲染中剔除，交由下方的原生车票卡片展示
-  if (text.includes('trainCode') || text.includes("trainNo") || text.includes("departureAt")) {
-    return text.replace(/\`\`\`(?:json)?\s*[\s\S]*?(?:\`\`\`|$)/g, "").trim();
-  }
-  return text;
-}
+import { MessageItem } from '../components/chat/MessageItem';
+import { useAiChat } from '../hooks/useAiChat';
 
 // 推荐提示卡片 (ChatGPT 风格)
 const PROMPT_SUGGESTIONS = [
@@ -134,191 +45,6 @@ const PROMPT_SUGGESTIONS = [
   },
 ];
 
-interface MessageItemProps {
-  msg: DisplayMessage;
-  activeKbId: number | null;
-  isExpanded: boolean;
-  isCopied: boolean;
-  onCopyText: (text: string) => void;
-  onCopyMessage: (text: string, id: string | number) => void;
-  onRegenerate: (id: string | number) => void;
-  onToggleExpanded: (id: string | number) => void;
-  onViewRoute: (ticket: TrainTicket) => void;
-}
-
-const MessageItem = React.memo<MessageItemProps>(
-  ({
-    msg,
-    activeKbId,
-    isExpanded,
-    isCopied,
-    onCopyText,
-    onCopyMessage,
-    onRegenerate,
-    onToggleExpanded,
-    onViewRoute,
-  }) => {
-    const isUser = msg.role === "user";
-
-    return (
-      <div className={`${msg.skipAnimation ? '' : 'chat-message-enter'} flex flex-col ${isUser ? "items-end" : "items-start"} max-w-full min-w-0`}>
-        {isUser ? (
-          <div className="max-w-[82%] sm:max-w-[75%] bg-[#F4F4F4] text-[#0D0D0D] rounded-3xl px-4 py-2.5 text-[15px] leading-relaxed select-text font-normal shadow-none">
-            {msg.content}
-          </div>
-        ) : (
-          <div className="w-full max-w-full min-w-0 text-[15px] leading-[1.7] text-[#0D0D0D] select-text">
-            {msg.isStreaming && !msg.content ? (
-              <div className="flex items-center gap-2 py-2 select-none">
-                <div className="flex items-center gap-1 shrink-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-wave-1" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-wave-2" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-wave-3" />
-                </div>
-                <span className="font-mono text-xs text-slate-400">
-                  {activeKbId ? "正在检索知识库并思考..." : "正在深度思考并组织回答..."}
-                </span>
-              </div>
-            ) : (
-              <div className="prose prose-slate max-w-full overflow-hidden text-[#0D0D0D] break-words [word-break:break-word] prose-p:my-2 prose-headings:my-2.5 prose-pre:my-2">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    code({ node, className, children, ...props }) {
-                      const match = /language-(\w+)/.exec(className || "");
-                      const codeText = String(children).replace(/\n$/, "");
-                      const isBlock = match || codeText.includes("\n");
-
-                      if (isBlock) {
-                        return (
-                          <div className="relative my-2.5 max-w-full overflow-hidden rounded-xl border border-slate-200 bg-[#1E1E1E] text-slate-100">
-                            <div className="flex items-center justify-between px-3 py-1.5 bg-[#2D2D2D] border-b border-[#3D3D3D] text-[10px] font-mono text-slate-300">
-                              <span>{match ? match[1].toUpperCase() : "CODE"}</span>
-                              <button
-                                onClick={() => onCopyText(codeText)}
-                                className="flex items-center gap-1 hover:text-white transition-colors cursor-pointer"
-                              >
-                                <Copy className="w-3 h-3" />
-                                <span>复制代码</span>
-                              </button>
-                            </div>
-                            <pre className="p-3 text-xs font-mono text-slate-100 overflow-x-auto max-w-full leading-normal whitespace-pre">
-                              {children}
-                            </pre>
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <code
-                          className="inline-flex items-center mx-0.5 px-1.5 py-0.5 rounded-md font-mono text-xs bg-slate-100 text-slate-800 border border-slate-200"
-                          {...props}
-                        >
-                          {children}
-                        </code>
-                      );
-                    },
-                  }}
-                >
-                  {cleanDisplayContent(msg.content)}
-                </ReactMarkdown>
-
-                {msg.isStreaming && (
-                  <span className="inline-block w-1.5 h-4 ml-0.5 bg-slate-900 animate-pulse align-middle" />
-                )}
-              </div>
-            )}
-
-            {/* 12306 车票富卡片 */}
-            {msg.tickets && msg.tickets.length > 0 && (() => {
-              const displayTickets = isExpanded ? msg.tickets : msg.tickets.slice(0, 3);
-              const hasMore = msg.tickets.length > 3;
-
-              return (
-                <div className="w-full mt-3 flex flex-col gap-2 animate-in fade-in duration-200">
-                  <div className="flex items-center justify-between text-xs text-slate-400 font-mono px-1">
-                    <span>12306 精选合适车次 ({displayTickets.length}/{msg.tickets.length})</span>
-                    <span className="text-[10px]">点击卡片查看时刻表</span>
-                  </div>
-                  {displayTickets.map((ticket) => (
-                    <TicketCard
-                      key={ticket.id}
-                      ticket={ticket}
-                      onViewRoute={onViewRoute}
-                    />
-                  ))}
-
-                  {hasMore && (
-                    <button
-                      onClick={() => onToggleExpanded(msg.id)}
-                      className="w-full py-2 px-3 rounded-xl bg-slate-50 hover:bg-slate-100 active:scale-[0.99] text-xs font-semibold text-slate-600 flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-slate-200/60"
-                    >
-                      {isExpanded ? (
-                        <>
-                          <ChevronUp className="w-3.5 h-3.5 text-slate-500" />
-                          <span>收起备选车次</span>
-                        </>
-                      ) : (
-                        <>
-                          <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
-                          <span>查看其余 {msg.tickets.length - 3} 趟备选车次</span>
-                        </>
-                      )}
-                    </button>
-                  )}
-                </div>
-              );
-            })()}
-
-            {/* AI 消息底部微操作行 */}
-            {!isUser && msg.content && !msg.isStreaming && (
-              <div className="flex items-center gap-1.5 mt-2 select-none">
-                <button
-                  onClick={() => onCopyMessage(msg.content, msg.id)}
-                  className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-800 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                  title="复制回答"
-                >
-                  {isCopied ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-emerald-600" />
-                      <span className="text-emerald-600 text-[10px]">已复制</span>
-                    </>
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                </button>
-
-                <button
-                  onClick={() => onRegenerate(msg.id)}
-                  className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-800 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                  title="重新生成"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  },
-  (prev, next) => {
-    return (
-      prev.msg.content === next.msg.content &&
-      prev.msg.isStreaming === next.msg.isStreaming &&
-      prev.msg.tickets === next.msg.tickets &&
-      prev.isExpanded === next.isExpanded &&
-      prev.isCopied === next.isCopied &&
-      prev.activeKbId === next.activeKbId &&
-      prev.onCopyText === next.onCopyText &&
-      prev.onCopyMessage === next.onCopyMessage &&
-      prev.onRegenerate === next.onRegenerate &&
-      prev.onToggleExpanded === next.onToggleExpanded &&
-      prev.onViewRoute === next.onViewRoute
-    );
-  }
-);
-
 interface ChatPageProps {
   onOpenKnowledge?: () => void;
   onOpenSettings?: () => void;
@@ -327,26 +53,23 @@ interface ChatPageProps {
 }
 
 export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSettings, onOpenMemory, onOpenPi }) => {
-  const {
-    serverUrl,
-    accessToken,
-    activeConversationId,
-    setActiveConversationId,
-    setConversations,
-    activeKbId,
-    setActiveKbId,
-    knowledgeBases,
-    setKnowledgeBases,
-    activeModelId,
-    setActiveModelId,
-    chatModels,
-    setChatModels,
-    logout,
-  } = useAppStore();
+  // 严格使用 Zustand Selector 读取切片状态，杜绝全局事件触发主界面无谓重绘
+  const serverUrl = useAppStore((s) => s.serverUrl);
+  const accessToken = useAppStore((s) => s.accessToken);
+  const activeConversationId = useAppStore((s) => s.activeConversationId);
+  const setActiveConversationId = useAppStore((s) => s.setActiveConversationId);
+  const setConversations = useAppStore((s) => s.setConversations);
+  const activeKbId = useAppStore((s) => s.activeKbId);
+  const setActiveKbId = useAppStore((s) => s.setActiveKbId);
+  const knowledgeBases = useAppStore((s) => s.knowledgeBases);
+  const setKnowledgeBases = useAppStore((s) => s.setKnowledgeBases);
+  const activeModelId = useAppStore((s) => s.activeModelId);
+  const setActiveModelId = useAppStore((s) => s.setActiveModelId);
+  const chatModels = useAppStore((s) => s.chatModels);
+  const setChatModels = useAppStore((s) => s.setChatModels);
+  const logout = useAppStore((s) => s.logout);
 
-  const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [inputText, setInputText] = useState('');
-  const [loading, setLoading] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [modelSheetOpen, setModelSheetOpen] = useState(false);
   const [toolsSheetOpen, setToolsSheetOpen] = useState(false);
@@ -359,16 +82,9 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const skipNextLoadRef = useRef(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  /** P0 同步防连发锁：在 await 期间也能阻止重复调用 */
-  const sendingRef = useRef(false);
   const inputTextRef = useRef('');
-  const conversationIdRef = useRef(activeConversationId);
-  conversationIdRef.current = activeConversationId;
 
-  /** P2 统一用 scrollTop 赋值，去掉 scrollIntoView smooth 打架 */
   const scrollToBottom = useCallback(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
@@ -392,8 +108,9 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
 
   const handleViewRoute = useCallback((ticket: TrainTicket) => {
     setSelectedTicket(ticket);
-    if (Array.isArray((ticket as any).routeStations) && (ticket as any).routeStations.length > 0) {
-      setRouteStations((ticket as any).routeStations);
+    const candidateStations = (ticket as unknown as { routeStations?: RouteStation[] }).routeStations;
+    if (Array.isArray(candidateStations) && candidateStations.length > 0) {
+      setRouteStations(candidateStations);
     } else {
       setRouteStations([
         {
@@ -401,15 +118,15 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
           stationName: ticket.from.name,
           arriveTime: '始发',
           departureTime: ticket.departureAt ? ticket.departureAt.slice(11, 16) : '09:00',
-          stopoverTime: '----'
+          stopoverTime: '----',
         },
         {
           stationNo: 2,
           stationName: ticket.to.name,
           arriveTime: ticket.arrivalAt ? ticket.arrivalAt.slice(11, 16) : '13:30',
           departureTime: '终到',
-          stopoverTime: '----'
-        }
+          stopoverTime: '----',
+        },
       ]);
     }
     setRouteModalOpen(true);
@@ -419,38 +136,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
     setExpandedTicketsMap((prev) => ({ ...prev, [id]: !prev[id] }));
   }, []);
 
-  // 1. 获取模型列表
-  const loadModels = useCallback(async () => {
-    try {
-      const models = await fetchChatModels(serverUrl, accessToken);
-      if (models && models.length > 0) {
-        setChatModels(models);
-        if (useAppStore.getState().activeModelId === null) {
-          const def = models.find((m) => m.isDefault === '1') || models[0];
-          setActiveModelId(def.id);
-        }
-      }
-    } catch (err) {
-      console.warn('加载模型列表失败:', err);
-    }
-  }, [serverUrl, accessToken, setActiveModelId, setChatModels]);
-
-  // 2. 获取知识库列表
-  const loadKnowledgeBases = useCallback(async () => {
-    try {
-      const bases = await fetchKnowledgeBases(serverUrl, accessToken);
-      if (bases && bases.length > 0) {
-        setKnowledgeBases(bases);
-        if (useAppStore.getState().activeKbId === null) {
-          setActiveKbId(bases[0].id);
-        }
-      }
-    } catch (err) {
-      console.warn('加载知识库失败:', err);
-    }
-  }, [serverUrl, accessToken, setActiveKbId, setKnowledgeBases]);
-
-  // 3. 获取会话列表
+  // 1. 获取会话列表
   const loadSessions = useCallback(async () => {
     if (!serverUrl || !accessToken) return;
     try {
@@ -467,31 +153,57 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
     }
   }, [serverUrl, accessToken, setConversations]);
 
-  // 4. 拉取历史记录
-  const loadMessages = useCallback(
-    async (sessionId: string) => {
-      if (!serverUrl || !accessToken || !sessionId || sessionId === 'default') return;
-      try {
-        const msgs = await fetchAiMessages(serverUrl, accessToken, sessionId);
-        const mapped: DisplayMessage[] = msgs.map((m) => {
-          const tickets = m.role === 'assistant' ? tryParseTicketsFromText(m.content) : undefined;
-          return {
-            id: m.id,
-            role: m.role,
-            content: m.content,
-            tickets: tickets && tickets.length > 0 ? tickets : undefined,
-            createTime: m.createTime,
-            skipAnimation: true,  // P2: 历史消息跳过入场动画
-          };
-        });
-        setMessages(mapped);
-        setTimeout(() => scrollToBottom(), 50);
-      } catch (err) {
-        console.warn('获取历史记录失败:', err);
+  // 2. 挂载 useAiChat 核心状态与流式响应逻辑
+  const {
+    messages,
+    setMessages,
+    loading,
+    loadMessages,
+    handleSendMessage: sendChatMessage,
+    handleStopGeneration,
+    handleRegenerate,
+  } = useAiChat({
+    serverUrl,
+    accessToken,
+    activeConversationId,
+    activeKbId,
+    activeModelId,
+    setActiveConversationId,
+    loadSessions,
+    logout,
+    onScrollToBottom: scrollToBottom,
+  });
+
+  // 3. 获取模型列表
+  const loadModels = useCallback(async () => {
+    try {
+      const models = await fetchChatModels(serverUrl, accessToken);
+      if (models && models.length > 0) {
+        setChatModels(models);
+        if (useAppStore.getState().activeModelId === null) {
+          const def = models.find((m) => m.isDefault === '1') || models[0];
+          setActiveModelId(def.id);
+        }
       }
-    },
-    [serverUrl, accessToken, scrollToBottom],
-  );
+    } catch (err) {
+      console.warn('加载模型列表失败:', err);
+    }
+  }, [serverUrl, accessToken, setActiveModelId, setChatModels]);
+
+  // 4. 获取知识库列表
+  const loadKnowledgeBases = useCallback(async () => {
+    try {
+      const bases = await fetchKnowledgeBases(serverUrl, accessToken);
+      if (bases && bases.length > 0) {
+        setKnowledgeBases(bases);
+        if (useAppStore.getState().activeKbId === null) {
+          setActiveKbId(bases[0].id);
+        }
+      }
+    } catch (err) {
+      console.warn('加载知识库失败:', err);
+    }
+  }, [serverUrl, accessToken, setActiveKbId, setKnowledgeBases]);
 
   useEffect(() => {
     loadModels();
@@ -500,17 +212,12 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
   }, [loadModels, loadKnowledgeBases, loadSessions]);
 
   useEffect(() => {
-    if (skipNextLoadRef.current) {
-      skipNextLoadRef.current = false;
-      return;
-    }
     if (activeConversationId && activeConversationId !== 'default') {
       loadMessages(activeConversationId);
     } else {
       setMessages([]);
     }
-  }, [activeConversationId, loadMessages]);
-
+  }, [activeConversationId, loadMessages, setMessages]);
 
   // 切换大模型
   const handleSelectModel = async (model: AiModelItem) => {
@@ -521,7 +228,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
     }
   };
 
-  // 新建会话 (回到新对话状态)
+  // 新建会话
   const handleCreateSession = () => {
     setActiveConversationId('default');
     setMessages([]);
@@ -537,184 +244,24 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
         setActiveConversationId('default');
         setMessages([]);
       }
-      loadSessions();
-    } catch (err: any) {
+      loadSessions().catch(() => {});
+    } catch (err: unknown) {
       console.warn('删除失败:', err);
     }
   };
 
-  // 停止生成
-  const handleStopGeneration = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-    sendingRef.current = false;
-    setLoading(false);
-    setMessages((prev) =>
-      prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m)),
-    );
-  }, []);
-
-  // 重新生成上一条回答
-  const handleRegenerate = useCallback((asstMsgId: string | number) => {
-    const idx = messages.findIndex((m) => m.id === asstMsgId);
-    if (idx > 0) {
-      const prevUserMsg = messages[idx - 1];
-      if (prevUserMsg && prevUserMsg.role === 'user') {
-        setMessages((prev) => prev.filter((m) => m.id !== asstMsgId));
-        handleSendMessage(prevUserMsg.content);
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages]);
-
-  // 发送消息：先立刻上屏，再建会话/拉流，避免点击后空白等待
-  const handleSendMessage = useCallback(async (textToSend?: string) => {
-    const text = (textToSend || inputTextRef.current).trim();
-    if (!text) return;
-    if (sendingRef.current) return;
-    sendingRef.current = true;
-
-    const token = useAppStore.getState().accessToken;
-    const url = useAppStore.getState().serverUrl;
-    if (!url || !token) {
-      sendingRef.current = false;
-      return;
-    }
-
-    const now = Date.now();
-    const userMsg: DisplayMessage = {
-      id: `u-${now}`,
-      role: 'user',
-      content: text,
-      createTime: new Date().toISOString(),
-    };
-    const asstMsgId = `a-${now}`;
-    const asstMsg: DisplayMessage = {
-      id: asstMsgId,
-      role: 'assistant',
-      content: '',
-      isStreaming: true,
-      createTime: new Date().toISOString(),
-    };
-
-    setLoading(true);
-    setInputText('');
-    inputTextRef.current = '';
-    if (textareaRef.current) textareaRef.current.style.height = 'auto';
-    setMessages((prev) => [...prev, userMsg, asstMsg]);
-    requestAnimationFrame(() => {
-      if (chatContainerRef.current) {
-        chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-      }
-    });
-
-    let targetSessionId = conversationIdRef.current;
-    if (!targetSessionId || targetSessionId === 'default') {
-      try {
-        const newSession = await createAiSession(url, token, text.slice(0, 16) || '新对话');
-        targetSessionId = newSession.id;
-        skipNextLoadRef.current = true;
-        conversationIdRef.current = targetSessionId;
-        setActiveConversationId(targetSessionId);
-        loadSessions();
-      } catch (err: any) {
-        sendingRef.current = false;
-        setLoading(false);
-        setMessages((prev) => prev.filter((m) => m.id !== userMsg.id && m.id !== asstMsgId));
-        if (
-          err.message?.includes('登录') ||
-          err.message?.includes('401') ||
-          err.message?.includes('token') ||
-          err.message?.includes('权限')
-        ) {
-          logout();
-          return;
-        }
-        console.warn('创建会话失败:', err);
-        return;
-      }
-    }
-
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
-    let accumulated = '';
-    let lastFlushTime = 0;
-    let pendingRafId: number | null = null;
-    const { activeKbId: kbId, activeModelId: modelId } = useAppStore.getState();
-
-    const flushStreamBuffer = (forceFinal = false) => {
-      if (pendingRafId) {
-        cancelAnimationFrame(pendingRafId);
-        pendingRafId = null;
-      }
-      const textSnapshot = accumulated;
-      const parsedTickets = textSnapshot.includes('\`\`\`json') ? tryParseTicketsFromText(textSnapshot) : undefined;
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === asstMsgId
-            ? {
-                ...m,
-                content: textSnapshot,
-                isStreaming: !forceFinal,
-                tickets: parsedTickets && parsedTickets.length > 0 ? parsedTickets : m.tickets,
-              }
-            : m,
-        ),
-      );
-      lastFlushTime = Date.now();
-      requestAnimationFrame(() => {
-        if (chatContainerRef.current) {
-          chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-        }
-      });
-    };
-
-    await streamAiChat({
-      serverUrl: url,
-      token,
-      sessionId: targetSessionId,
-      message: text,
-      kbId,
-      modelId,
-      signal: controller.signal,
-      onChunk: (chunk) => {
-        accumulated += chunk;
-        const t = Date.now();
-        if (t - lastFlushTime > 80) {
-          flushStreamBuffer(false);
-        } else if (!pendingRafId) {
-          pendingRafId = requestAnimationFrame(() => {
-            pendingRafId = null;
-            flushStreamBuffer(false);
-          });
-        }
-      },
-      onError: (err: any) => {
-        flushStreamBuffer(true);
-        setLoading(false);
-        sendingRef.current = false;
-        abortControllerRef.current = null;
-        if (
-          String(err?.message || err).includes('401') ||
-          String(err?.message || err).includes('登录') ||
-          String(err?.message || err).includes('token')
-        ) {
-          logout();
-          return;
-        }
-        console.warn("生成出错:", err);
-      },
-      onDone: () => {
-        flushStreamBuffer(true);
-        setLoading(false);
-        sendingRef.current = false;
-        abortControllerRef.current = null;
-      },
-    });
-  }, [loadSessions, logout, setActiveConversationId]);
+  // 发送消息
+  const handleSendMessage = useCallback(
+    async (textToSend?: string) => {
+      const text = (textToSend || inputTextRef.current).trim();
+      if (!text) return;
+      setInputText('');
+      inputTextRef.current = '';
+      if (textareaRef.current) textareaRef.current.style.height = 'auto';
+      await sendChatMessage(text);
+    },
+    [sendChatMessage]
+  );
 
   const selectedKb = knowledgeBases.find((kb) => kb.id === activeKbId);
   const selectedModel = chatModels.find((m) => m.id === activeModelId);
@@ -722,7 +269,6 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
   return (
     <div className="flex flex-col h-full bg-white text-[#0D0D0D] antialiased overflow-hidden relative selection:bg-slate-900 selection:text-white">
       {/* ChatGPT 标志性顶部导航栏 (三段式极简架构) */}
-      {/* P1: 去掉 backdrop-blur-xl，Android WebView 逐帧高斯模糊极其昂贵 */}
       <header className="safe-top bg-white px-3 py-2 flex items-center justify-between z-20 sticky top-0 border-b border-black/[0.04]">
         {/* 左侧：抽屉按钮 */}
         <button
@@ -759,7 +305,6 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
         {messages.length === 0 ? (
           /* ChatGPT 极简居中欢迎状态 */
           <div className="flex flex-col items-center justify-center min-h-[62vh] max-w-sm mx-auto text-center px-2">
-            {/* 极简居中品牌图标 */}
             <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200/80 shadow-xs flex items-center justify-center mb-5">
               <img
                 src="/app-logo.png"
@@ -818,7 +363,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 底部输入岛：实色背景，避免渐变 + 键盘高度变化一起重绘 */}
+      {/* 底部输入岛 */}
       <div className="shrink-0 px-3 pt-1.5 pb-2.5 bg-white z-20">
         <div className="chat-composer max-w-lg mx-auto bg-[#F4F4F4] rounded-[30px] p-1.5 pl-2 flex items-end gap-1.5 border border-black/[0.04]">
           {/* 左侧：+ 工具展开按键 */}
@@ -851,7 +396,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
             className="flex-1 bg-transparent text-[15px] text-slate-900 placeholder:text-slate-400 focus:outline-none resize-none py-1.5 px-1 leading-normal font-normal max-h-32"
           />
 
-          {/* 右侧：ChatGPT 经典圆形向上上送键 / 停止键 (防止失焦打断键盘，强触感) */}
+          {/* 右侧：ChatGPT 经典圆形向上发送键 / 停止键 */}
           {loading ? (
             <button
               type="button"
@@ -871,7 +416,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
               disabled={!inputText.trim()}
               onPointerDown={(e) => {
                 if (inputText.trim()) {
-                  e.preventDefault(); // 核心：阻止失焦导致软键盘收起和输入条移位
+                  e.preventDefault();
                   triggerHaptic(25);
                 }
               }}
@@ -889,7 +434,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
         </div>
       </div>
 
-      {/* 模型切换 Action Sheet (iOS 半屏平滑呼出) */}
+      {/* 模型切换 Action Sheet */}
       {modelSheetOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 animate-in fade-in duration-200">
           <div

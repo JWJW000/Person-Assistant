@@ -94,7 +94,9 @@ export const TrainTicketSchema = z.object({
   seats: z.array(SeatSchema),
   matchLabels: z.array(z.string()).optional(),
   scheduleReference: z.boolean().optional(),
-  referenceDate: z.string().optional()
+  referenceDate: z.string().optional(),
+  isTransfer: z.boolean().optional(),
+  transferHub: z.string().optional()
 });
 export type TrainTicket = z.infer<typeof TrainTicketSchema>;
 
@@ -277,3 +279,52 @@ export const ModelProfileSettingsSchema = z.object({
   hasKey: z.boolean().optional(),
   enabled: z.boolean().default(true)
 });
+
+// ==========================================
+// 5. AI 对话与知识库契约 (Sessions, Messages, KnowledgeBase, Models)
+// ==========================================
+
+export const AiSessionSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  lastMessagePreview: z.string().optional(),
+  messageCount: z.number().optional(),
+  createTime: z.string().optional(),
+  updateTime: z.string().optional()
+});
+export type AiSession = z.infer<typeof AiSessionSchema>;
+export type AiSessionItem = AiSession;
+
+export const AiMessageSchema = z.object({
+  id: z.union([z.number(), z.string()]),
+  sessionId: z.string(),
+  role: z.enum(['user', 'assistant', 'system']),
+  content: z.string(),
+  status: z.string().optional(),
+  createTime: z.string().optional()
+});
+export type AiMessage = z.infer<typeof AiMessageSchema>;
+export type AiMessageItem = AiMessage;
+
+export const KnowledgeBaseSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  description: z.string().optional(),
+  chunkSize: z.number().optional(),
+  chunkOverlap: z.number().optional(),
+  isPublic: z.string().optional(),
+  embeddingModelId: z.number().optional()
+});
+export type KnowledgeBase = z.infer<typeof KnowledgeBaseSchema>;
+export type KnowledgeBaseItem = KnowledgeBase;
+
+export const AiModelSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  provider: z.string(),
+  modelType: z.string(),
+  modelName: z.string(),
+  isDefault: z.string()
+});
+export type AiModel = z.infer<typeof AiModelSchema>;
+export type AiModelItem = AiModel;

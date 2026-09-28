@@ -10,7 +10,7 @@ import { PiTasksPage } from './pages/PiTasksPage';
 import { UpdateBanner } from './components/UpdateBanner';
 
 export const App: React.FC = () => {
-  const { accessToken } = useAppStore();
+  const accessToken = useAppStore((s) => s.accessToken);
   const piRemoteEnabled = import.meta.env.VITE_PI_REMOTE_ENABLED === 'true';
   const [authMode, setAuthMode] = useState<'login' | 'pair'>('login');
   const [activeOverlay, setActiveOverlay] = useState<'none' | 'knowledge' | 'settings' | 'memory' | 'pi'>('none');

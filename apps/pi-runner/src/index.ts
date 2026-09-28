@@ -150,7 +150,13 @@ class Runner {
   private detectPiVersion() {
     const result = spawnSync(this.config.piExecutable, ['--version'], { encoding: 'utf8', timeout: 10_000, shell: false });
     const version = `${result.stdout || ''} ${result.stderr || ''}`.match(/\d+\.\d+\.\d+/)?.[0] || '';
-    if (!version.startsWith('0.84.')) throw new Error(`不兼容的 Pi 版本: ${version || 'unknown'}（需要 0.84.x）`);
+    const match = version.match(/^(\d+)\.(\d+)\.(\d+)$/);
+    const major = match ? Number(match[1]) : NaN;
+    const minor = match ? Number(match[2]) : NaN;
+    const isSupported = major > 0 || (major === 0 && minor >= 84);
+    if (!isSupported) {
+      throw new Error(`不兼容的 Pi 版本: ${version || 'unknown'}（需要 >= 0.84.x）`);
+    }
     return version;
   }
 

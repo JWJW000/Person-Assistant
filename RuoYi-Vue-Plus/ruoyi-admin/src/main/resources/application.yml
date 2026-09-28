@@ -387,3 +387,8 @@ spring.ai.mcp:
 pi:
   gateway-url: ${PI_GATEWAY_URL:http://127.0.0.1:3000}
   internal-token: ${PI_INTERNAL_TOKEN:}
+
+--- # 个人助理与 12306 MCP 网关配置
+assistant:
+  mcp-gateway:
+    url: ${PI_GATEWAY_URL:http://assistant-server:3000}

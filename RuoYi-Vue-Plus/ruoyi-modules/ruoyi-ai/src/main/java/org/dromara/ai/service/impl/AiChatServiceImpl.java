@@ -22,6 +22,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.dromara.common.satoken.utils.LoginHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -81,6 +82,9 @@ public class AiChatServiceImpl implements IAiChatService {
     private final IAiKnowledgeService knowledgeService;
     private final AiPromptMapper promptMapper;
     private final org.dromara.ai.service.IAiUserMemoryService memoryService;
+
+    @Value("${assistant.mcp-gateway.url:http://assistant-server:3000}")
+    private String mcpGatewayUrl;
 
     @Override
     public List<AiChatSession> getUserSessions() {
@@ -471,11 +475,20 @@ public class AiChatServiceImpl implements IAiChatService {
     }
 
     private String callMcpTrainQuery(String userMessage, List<AiChatMessage> history, String userProfile) {
-        String[] targetUrls = new String[] {
-            "http://assistant-server:3000/internal/train/query",
-            "http://127.0.0.1:3000/internal/train/query",
-            "http://172.17.0.1:3000/internal/train/query"
-        };
+        String base = StringUtils.isNotBlank(mcpGatewayUrl) ? mcpGatewayUrl.trim() : "http://assistant-server:3000";
+        if (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        String primaryUrl = base + "/internal/train/query";
+
+        List<String> targetUrls = new java.util.ArrayList<>();
+        targetUrls.add(primaryUrl);
+        if (!primaryUrl.contains("127.0.0.1") && !primaryUrl.contains("localhost")) {
+            targetUrls.add("http://127.0.0.1:3000/internal/train/query");
+        }
+        if (!primaryUrl.contains("172.17.0.1")) {
+            targetUrls.add("http://172.17.0.1:3000/internal/train/query");
+        }
         for (String targetUrl : targetUrls) {
             try {
                 URL url = new URL(targetUrl);
@@ -522,8 +535,11 @@ public class AiChatServiceImpl implements IAiChatService {
                         }
                         return sb.toString();
                     }
+                } else {
+                    log.warn("MCP 查票请求上游返回非 200: [{}] {}", conn.getResponseCode(), targetUrl);
                 }
-            } catch (Exception ignored) {
+            } catch (Exception ex) {
+                log.warn("MCP 查票请求异常 [{}]: {}", targetUrl, ex.getMessage());
             }
         }
         return null;
@@ -547,6 +563,8 @@ public class AiChatServiceImpl implements IAiChatService {
         conn.setRequestProperty("Authorization", "Bearer " + config.getApiKey());
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setRequestProperty("Accept", "text/event-stream");
+        conn.setConnectTimeout(5000);
+        conn.setReadTimeout(60000);
         conn.setDoOutput(true);
 
         // 构建包含前序对话历史与 Hermes 三层记忆快照的完整 messages 数组
@@ -597,6 +615,31 @@ public class AiChatServiceImpl implements IAiChatService {
             os.write(jsonPayload.getBytes(StandardCharsets.UTF_8));
         }
 
+        int status = conn.getResponseCode();
+        if (status != 200) {
+            String errBody = "";
+            try (java.io.InputStream es = conn.getErrorStream()) {
+                if (es != null) {
+                    try (BufferedReader errReader = new BufferedReader(new InputStreamReader(es, StandardCharsets.UTF_8))) {
+                        StringBuilder errSb = new StringBuilder();
+                        String el;
+                        while ((el = errReader.readLine()) != null) {
+                            errSb.append(el);
+                        }
+                        errBody = errSb.toString();
+                    }
+                }
+            } catch (Exception ignored) {}
+            String errorMsg = "上游模型调用失败 [" + status + "]: " + errBody;
+            log.error(errorMsg);
+            try {
+                emitter.send(SseEmitter.event().name("error").data(errorMsg));
+            } catch (Exception ignored) {}
+            try {
+                emitter.complete();
+            } catch (Exception ignored) {}
+            return;
+        }
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
             String line;
             while ((line = reader.readLine()) != null) {

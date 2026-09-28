@@ -94,7 +94,7 @@ export class AgentRuntime {
     const cfg = await this.resolveConfig();
     const llm = cfg.enabled ? this.buildClient(cfg) : null;
     const warnings: string[] = [];
-    const currentDate = options.currentDate || '2026-09-30';
+    const currentDate = options.currentDate || new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
 
     const inherited = this.inheritQueryFromHistory(
       userMessage,
@@ -660,7 +660,7 @@ JSON 结构规范：
   private static readonly LEAD_WORDS = /^(?:帮我|帮忙|我想|我要|我|麻烦|请问|请|查一下|查一查|查询|查|看看|看一下|看|来|想|要|从|坐|乘坐|去|出|在|号|日|问一下|问问)+/;
   private static readonly TAIL_WORDS = /(?:的高铁|的高客|的动车|的火车|的汽车|的飞机|高铁|动车|火车|汽车|飞机|车票|车次|列车|班次|机票|有余票|有没有票|还有票|有票|没票|无票|余票|票价|时刻表|时刻|车|票|有|站|市|县|区|吗|呢|吧|啊|呀|了|与|及|和|，|,|。|？|\?|！|!|\s)+$/;
   // 时间/日期修饰词 (支持空格分隔如 "30 号")
-  private static readonly TIME_WORDS = /(?:\d{4}[年\-\/.]\s*\d{1,2}[月\-\/.]\s*\d{1,2}[日号]?|\d{1,2}[月\-\/.]\s*\d{1,2}[日号]?|\d{1,2}\s*[日号]|\d{1,2}[点时](?:\d{1,2}分?)?|\d{1,3}天后|一个?月后|1个?月后|下个月|大后天|后天|明天|明日|今天|今日|昨天|昨日|周[一二三四五六日天]|这周|下周|周末|上午|中午|下午|晚上|早上|凌晨|清晨|傍晚|白天)/g;
+  public static readonly TIME_WORDS = /(?:\d{4}[年\-\/.]\s*\d{1,2}[月\-\/.]\s*\d{1,2}[日号]?|\d{1,2}[月\-\/.]\s*\d{1,2}[日号]?|\d{1,2}\s*[日号]|\d{1,2}[点时](?:\d{1,2}分?)?|\d{1,3}天后|一个?月后|1个?月后|下个月|大后天|后天|明天|明日|今天|今日|昨天|昨日|周[一二三四五六日天]|这周|下周|周末|上午|中午|下午|晚上|早上|凌晨|清晨|傍晚|白天)/g;
 
   public static cleanStationName(raw: string): string {
     let s = raw.trim();

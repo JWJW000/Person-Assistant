@@ -16,7 +16,14 @@ import { PiComposer } from '../components/PiComposer';
 import { copyToClipboard } from '../lib/clipboard';
 
 export const PiTasksPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
-  const { serverUrl, accessToken, selectedPiHostId, selectedPiTaskId, setSelectedPiHostId, setSelectedPiTaskId, piEventCursors, setPiEventCursor } = useAppStore();
+  const serverUrl = useAppStore((s) => s.serverUrl);
+  const accessToken = useAppStore((s) => s.accessToken);
+  const selectedPiHostId = useAppStore((s) => s.selectedPiHostId);
+  const selectedPiTaskId = useAppStore((s) => s.selectedPiTaskId);
+  const setSelectedPiHostId = useAppStore((s) => s.setSelectedPiHostId);
+  const setSelectedPiTaskId = useAppStore((s) => s.setSelectedPiTaskId);
+  const piEventCursors = useAppStore((s) => s.piEventCursors);
+  const setPiEventCursor = useAppStore((s) => s.setPiEventCursor);
   const token = accessToken || '';
   const [hosts, setHosts] = useState<PiHost[]>([]);
   const [projects, setProjects] = useState<PiProject[]>([]);
