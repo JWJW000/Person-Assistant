@@ -30,6 +30,7 @@ export const DEFAULT_RELAY_MODELS: AiModelItem[] = [
   { id: 8, name: 'DeepSeek V4 Flash (极速高并发)', modelName: 'deepseek-v4-flash', provider: 'deepseek', modelType: 'chat', isDefault: '0' },
   { id: 9, name: 'DeepSeek V4 Flash Vision (多模态)', modelName: 'deepseek-v4-flash-vision-exp', provider: 'deepseek', modelType: 'chat', isDefault: '0' },
   { id: 10, name: 'DeepSeek Flash', modelName: 'deepseek-flash', provider: 'deepseek', modelType: 'chat', isDefault: '0' },
+  { id: 34, name: 'xAI Grok 4.7', modelName: 'grok-4.7', provider: 'xai', modelType: 'chat', isDefault: '0' },
   { id: 21, name: 'xAI Grok 4.6', modelName: 'grok-4.6', provider: 'xai', modelType: 'chat', isDefault: '0' },
   { id: 22, name: 'xAI Grok 4.5', modelName: 'grok-4.5', provider: 'xai', modelType: 'chat', isDefault: '0' },
   { id: 23, name: 'xAI Grok 4.3', modelName: 'grok-4.3', provider: 'xai', modelType: 'chat', isDefault: '0' },

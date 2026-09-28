@@ -162,6 +162,7 @@ export function registerSettingsRoutes(
           'claude-3-5-haiku',
           'deepseek-chat',
           'deepseek-reasoner',
+          'grok-4.7',
           'qwen-plus',
           'qwen-max'
         ],
