@@ -1,14 +1,16 @@
 import React from 'react';
 import { TrainTicket } from '@assistant/contracts';
-import { ArrowRight, Bookmark, Clock } from 'lucide-react';
+import { formatYuan, seatLabel } from '../lib/ticketView';
+import { ArrowRight, Bookmark, BellRing, Clock } from 'lucide-react';
 
 interface TicketCardProps {
   ticket: TrainTicket;
   onFavorite?: (ticket: TrainTicket) => void;
   onViewRoute?: (ticket: TrainTicket) => void;
+  onWatch?: (ticket: TrainTicket, seatKind: string) => void;
 }
 
-export const TicketCard: React.FC<TicketCardProps> = ({ ticket, onFavorite, onViewRoute }) => {
+export const TicketCard: React.FC<TicketCardProps> = ({ ticket, onFavorite, onViewRoute, onWatch }) => {
   const formatTime = (iso: string) => {
     try {
       return iso.slice(11, 16);
@@ -112,6 +114,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, onFavorite, onVi
         {ticket.seats.map((seat, i) => {
           const isAvail = seat.availability === 'available';
           const isWait = seat.availability === 'waitlist';
+          const canWatch = Boolean(onWatch && !ticket.scheduleReference && !ticket.isTransfer && !isAvail && seat.availability !== 'not_applicable');
           return (
             <div
               key={i}
@@ -122,15 +125,28 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, onFavorite, onVi
               <span className="text-[11px] text-slate-500 font-medium">{seat.kind}</span>
               <span
                 className={`text-xs font-bold mt-0.5 ${
-                  isAvail ? 'text-emerald-600' : isWait ? 'text-amber-600' : 'text-slate-300'
+                  isAvail ? 'text-emerald-600' : isWait ? 'text-amber-600' : seat.availability === 'unknown' ? 'text-slate-400' : 'text-slate-300'
                 }`}
               >
-                {isAvail ? (seat.count ? `${seat.count}张` : '有票') : isWait ? '候补' : '无票'}
+                {seatLabel(seat)}
               </span>
               {seat.priceMinor !== null && (
-                <span className="text-[10px] font-mono text-slate-400 mt-0.5">
-                  ¥{(seat.priceMinor / 100).toFixed(0)}
+                <span className={`text-[10px] font-mono mt-0.5 ${isAvail ? 'text-slate-500' : 'text-slate-300'}`}>
+                  {formatYuan(seat.priceMinor)}
                 </span>
+              )}
+              {canWatch && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onWatch?.(ticket, seat.kind);
+                  }}
+                  className="mt-1 inline-flex items-center gap-0.5 text-[10px] font-semibold text-blue-600"
+                >
+                  <BellRing className="h-3 w-3" />
+                  盯票
+                </button>
               )}
             </div>
           );

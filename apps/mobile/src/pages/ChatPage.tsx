@@ -4,7 +4,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAppStore, type AiModelItem } from '../store';
 import { ConversationDrawer } from '../components/ConversationDrawer';
 import { RouteModal, type RouteStation } from '../components/RouteModal';
-import type { TrainTicket } from '@assistant/contracts';
+import type { TicketQuery, TrainTicket } from '@assistant/contracts';
+import { createTicketWatch, createTicketPurchase, confirmTicketPurchase } from '../lib/ticketWatch';
 import {
   fetchKnowledgeBases,
   fetchChatModels,
@@ -68,6 +69,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
   const chatModels = useAppStore((s) => s.chatModels);
   const setChatModels = useAppStore((s) => s.setChatModels);
   const logout = useAppStore((s) => s.logout);
+  const deviceToken = useAppStore((s) => s.deviceToken);
 
   const [inputText, setInputText] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -79,6 +81,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
   const [selectedTicket, setSelectedTicket] = useState<TrainTicket | null>(null);
   const [routeStations, setRouteStations] = useState<RouteStation[]>([]);
   const [routeModalOpen, setRouteModalOpen] = useState(false);
+  const [watchNotice, setWatchNotice] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
@@ -109,28 +112,37 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
   const handleViewRoute = useCallback((ticket: TrainTicket) => {
     setSelectedTicket(ticket);
     const candidateStations = (ticket as unknown as { routeStations?: RouteStation[] }).routeStations;
-    if (Array.isArray(candidateStations) && candidateStations.length > 0) {
-      setRouteStations(candidateStations);
-    } else {
-      setRouteStations([
-        {
-          stationNo: 1,
-          stationName: ticket.from.name,
-          arriveTime: '始发',
-          departureTime: ticket.departureAt ? ticket.departureAt.slice(11, 16) : '09:00',
-          stopoverTime: '----',
-        },
-        {
-          stationNo: 2,
-          stationName: ticket.to.name,
-          arriveTime: ticket.arrivalAt ? ticket.arrivalAt.slice(11, 16) : '13:30',
-          departureTime: '终到',
-          stopoverTime: '----',
-        },
-      ]);
-    }
+    setRouteStations(Array.isArray(candidateStations) ? candidateStations : []);
     setRouteModalOpen(true);
   }, []);
+
+  const handleWatch = useCallback(async (ticket: TrainTicket, seatKind: string) => {
+    const date = ticket.departureAt.slice(0, 10);
+    if (!serverUrl || !deviceToken || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      setWatchNotice('还不能盯票：缺少登录或出发日期');
+      return;
+    }
+    const query: TicketQuery = {
+      date,
+      timezone: 'Asia/Shanghai',
+      from: { kind: 'station', name: ticket.from.name, code: ticket.from.code },
+      to: { kind: 'station', name: ticket.to.name, code: ticket.to.code },
+      trainTypes: [],
+      departMinutes: [0, 1440],
+      seatPreference: seatKind,
+      onlyAvailable: false,
+      sort: 'departure'
+    };
+    try {
+      await createTicketWatch(serverUrl, deviceToken, { trainCode: ticket.trainCode, query, seatKind });
+      setWatchNotice(`已在后台盯 ${ticket.trainCode} ${seatKind}，有票会在这里提醒。不会自动下单。`);
+      const purchase = await createTicketPurchase(serverUrl, deviceToken, { trainCode: ticket.trainCode, query, seatKind, accountRef: 'self' });
+      const confirmed = await confirmTicketPurchase(serverUrl, deviceToken, purchase.id, '本人');
+      setWatchNotice(confirmed.detail);
+    } catch (err) {
+      setWatchNotice(err instanceof Error ? err.message : '盯票失败');
+    }
+  }, [serverUrl, deviceToken]);
 
   const handleToggleExpanded = useCallback((id: string | number) => {
     setExpandedTicketsMap((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -357,6 +369,7 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
               onRegenerate={handleRegenerate}
               onToggleExpanded={handleToggleExpanded}
               onViewRoute={handleViewRoute}
+              onWatch={handleWatch}
             />
           ))
         )}
@@ -587,6 +600,15 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
           isOpen={routeModalOpen}
           onClose={() => setRouteModalOpen(false)}
         />
+      )}
+      {watchNotice && (
+        <button
+          type="button"
+          onClick={() => setWatchNotice(null)}
+          className="absolute inset-x-3 bottom-24 z-30 rounded-2xl bg-slate-900 px-4 py-3 text-left text-xs font-medium text-white shadow-lg"
+        >
+          {watchNotice}
+        </button>
       )}
     </div>
   );

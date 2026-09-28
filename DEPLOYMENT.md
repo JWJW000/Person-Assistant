@@ -142,3 +142,10 @@ App admin 账号下已出现“云服务器管理”项目，ID `cbf15754-dff4-4
 权限与 Runner 配置备份：`/opt/assistant/backups/pi-server-admin-20260922-090619`。整机权限属于该服务器 Runner 的全部会话，项目目录不是主机权限隔离边界。维护与撤销入口见 [服务器管理说明](deploy/pi-server-admin/README.md)。
 
 依赖审计：官方 npm 端点返回 0 high/critical、2 moderate，均为 Vitest/@vitest/mocker 的 GHSA-82fw-gwwq-j7x9，涉及浏览器测试 mock 路由，未部署为 App 或生产网关服务；本次无新增 npm 依赖。升级至 Vitest >=4.1.11 涉及跨主版本开发工具升级，纳入开发依赖维护，复核日期 2026-10-06。镜像源 npmmirror 不提供审计端点，审计通过命令行临时指定官方 registry 完成，未改动项目 registry 配置。
+
+### 车票筛选排序与盯票购票确认（0.17.16）
+
+车票列表支持只看有票与多维度排序；经停时刻表若缺失明确提示，不伪造数据；新增后台盯票提醒与购票确认留存，支付仍由用户在 12306 官方页完成。
+
+全量测试 20/20 文件、78/78 测试用例通过；类型检查通过。Android release 构建签名通过。
+versionCode `17016`，APK SHA-256 `0af659270001aa173fde9be4264be4120d913fd883871afc8ef8606017dad2ca`；下载地址：https://train.5wjw.cn/updates/personal-ai-assistant-v0.17.16-aarch64.apk 。更新清单：https://train.5wjw.cn/updates/latest.json 。

@@ -8,6 +8,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { MemoryPage } from './pages/MemoryPage';
 import { PiTasksPage } from './pages/PiTasksPage';
 import { UpdateBanner } from './components/UpdateBanner';
+import { TicketWatchBanner } from './components/TicketWatchBanner';
 
 export const App: React.FC = () => {
   const accessToken = useAppStore((s) => s.accessToken);
@@ -74,6 +75,7 @@ export const App: React.FC = () => {
       className="fixed inset-x-0 flex flex-col overflow-hidden bg-white text-slate-900 antialiased selection:bg-slate-900 selection:text-white"
     >
       <UpdateBanner />
+      <TicketWatchBanner />
 
       {/* 主视图区：ChatGPT 全沉浸式架构 */}
       <main className="flex-1 min-h-0 overflow-hidden relative">

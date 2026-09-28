@@ -6,6 +6,8 @@ import { McpBridge } from '@assistant/mcp-bridge';
 import { TrainService } from '@assistant/train-domain';
 import { AgentRuntime } from '@assistant/agent-runtime';
 import { registerPi } from './pi.js';
+import { TicketWatchService } from './services/ticketWatch.js';
+import { TicketPurchaseService } from './services/ticketPurchase.js';
 
 import { registerHealthRoutes } from './routes/health.js';
 import { registerAuthRoutes, createAuthenticator } from './routes/auth.js';
@@ -13,6 +15,7 @@ import { registerTrainRoutes } from './routes/train.js';
 import { registerConversationsRoutes } from './routes/conversations.js';
 import { registerRunsRoutes } from './routes/runs.js';
 import { registerSettingsRoutes, resolveRelayConfig } from './routes/settings.js';
+import { registerWatchRoutes } from './routes/watches.js';
 
 export function buildServer(): { app: FastifyInstance; db: Database.Database } {
   const app = fastify({ logger: false });
@@ -34,6 +37,12 @@ export function buildServer(): { app: FastifyInstance; db: Database.Database } {
   });
   const trainService = new TrainService(mcpBridge);
   const agentRuntime = new AgentRuntime(trainService, () => resolveRelayConfig(db));
+  const ticketWatches = new TicketWatchService(db, trainService);
+  const ticketPurchases = new TicketPurchaseService(db);
+  ticketWatches.start();
+  app.addHook('onClose', async () => {
+    ticketWatches.stop();
+  });
 
   // 注册子路由与插件
   registerPi(app, db);
@@ -42,7 +51,9 @@ export function buildServer(): { app: FastifyInstance; db: Database.Database } {
   registerTrainRoutes(app, mcpBridge, agentRuntime);
   registerConversationsRoutes(app, db, agentRuntime, authenticate);
   registerRunsRoutes(app, db, authenticate);
+  registerWatchRoutes(app, ticketWatches, authenticate, ticketPurchases);
   registerSettingsRoutes(app, db, authenticate);
+
 
   return { app, db };
 }

@@ -6,12 +6,14 @@ import { ChevronDown, ChevronUp, Train } from 'lucide-react';
 interface TicketsDisplayProps {
   tickets: TrainTicket[];
   onViewRoute?: (ticket: TrainTicket) => void;
+  onWatch?: (ticket: TrainTicket, seatKind: string) => void;
   defaultVisibleCount?: number;
 }
 
 export const TicketsDisplay: FC<TicketsDisplayProps> = ({
   tickets,
   onViewRoute,
+  onWatch,
   defaultVisibleCount = 3
 }) => {
   const [expanded, setExpanded] = useState(false);
@@ -39,7 +41,7 @@ export const TicketsDisplay: FC<TicketsDisplayProps> = ({
       {/* 车票卡片列表 */}
       <div className="space-y-2">
         {visibleTickets.map((t) => (
-          <TicketCard key={t.id} ticket={t} onViewRoute={onViewRoute} />
+          <TicketCard key={t.id} ticket={t} onViewRoute={onViewRoute} onWatch={onWatch} />
         ))}
       </div>
 

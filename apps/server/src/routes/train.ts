@@ -19,6 +19,73 @@ interface TrainQueryRequestBody {
   userProfile?: string;
 }
 
+const SAME_STATION_MINUTES = 25;
+const CROSS_STATION_MINUTES = 60;
+const MAX_LAYOVER_MINUTES = 240;
+
+function stationKey(name: string): string {
+  return name.replace(/站$/, '').trim();
+}
+
+function cheapestSeat(ticket: TrainTicket) {
+  const priced = ticket.seats.filter((seat) => seat.priceMinor != null && seat.availability === 'available');
+  const pool = priced.length ? priced : ticket.seats.filter((seat) => seat.priceMinor != null);
+  if (!pool.length) return undefined;
+  return pool.reduce((best, seat) => ((seat.priceMinor ?? Infinity) < (best.priceMinor ?? Infinity) ? seat : best));
+}
+
+/** 只保留接得上的两段真实车次。席别、张数和价格各自保留，不合成一张假票。 */
+export function pairTransferLegs(first: TrainTicket[], second: TrainTicket[], hub: string): TrainTicket[] {
+  const pairs: TrainTicket[] = [];
+  for (const leg1 of first) {
+    if (leg1.scheduleReference) continue;
+    const arrive = Date.parse(leg1.arrivalAt);
+    if (Number.isNaN(arrive)) continue;
+    const sameStation = stationKey(leg1.to.name) === stationKey(second[0]?.from.name || hub);
+    const minimum = sameStation ? SAME_STATION_MINUTES : CROSS_STATION_MINUTES;
+    const next = second
+      .filter((leg2) => !leg2.scheduleReference)
+      .map((leg2) => ({ leg2, wait: (Date.parse(leg2.departureAt) - arrive) / 60000 }))
+      .filter((item) => item.wait >= minimum && item.wait <= MAX_LAYOVER_MINUTES)
+      .sort((a, b) => a.wait - b.wait)[0];
+    if (!next) continue;
+    const waitMinutes = Math.round(next.wait);
+    const leg2 = next.leg2;
+    const firstSeat = cheapestSeat(leg1);
+    const secondSeat = cheapestSeat(leg2);
+    const soldOut = [leg1, leg2].some((leg) => !leg.seats.some((seat) => seat.availability === 'available'));
+    pairs.push({
+      id: `transfer-${leg1.trainCode}-${leg2.trainCode}-${hub}`,
+      trainCode: `${leg1.trainCode}→${leg2.trainCode}`,
+      trainNo: `${leg1.trainNo}_${leg2.trainNo}`,
+      from: leg1.from,
+      to: leg2.to,
+      departureAt: leg1.departureAt,
+      arrivalAt: leg2.arrivalAt,
+      durationMinutes: leg1.durationMinutes + leg2.durationMinutes + waitMinutes,
+      dayDiff: leg1.dayDiff + leg2.dayDiff,
+      seats: [leg1, leg2].map((leg, index) => {
+        const seat = index === 0 ? firstSeat : secondSeat;
+        return {
+          kind: `${leg.trainCode} ${seat?.kind || '席别待查'}`,
+          availability: seat?.availability || 'unknown',
+          count: seat?.count ?? null,
+          priceMinor: seat?.priceMinor ?? null,
+          currency: 'CNY' as const
+        };
+      }),
+      matchLabels: [
+        `经由${hub}`,
+        sameStation ? `同站候${waitMinutes}分` : `跨站候${waitMinutes}分`,
+        ...(soldOut ? ['有一段无票'] : [])
+      ],
+      isTransfer: true,
+      transferHub: hub
+    });
+  }
+  return pairs.sort((a, b) => a.durationMinutes - b.durationMinutes).slice(0, 2);
+}
+
 export async function findTransferRoutes(
   from: string,
   to: string,
@@ -29,60 +96,19 @@ export async function findTransferRoutes(
   const hubs = preferredHub
     ? [preferredHub]
     : ['郑州东', '武汉', '西安北', '南京南', '徐州东', '石家庄', '合肥南', '南昌西', '长沙南', '成都东'].filter(
-        (h) => h !== from && h !== to && !from.includes(h) && !to.includes(h)
+        (hub) => hub !== from && hub !== to && !from.includes(hub) && !to.includes(hub)
       );
 
-  for (const hub of hubs.slice(0, 2)) {
+  for (const hub of hubs.slice(0, preferredHub ? 1 : 2)) {
     try {
-      const [leg1Tickets, leg2Tickets] = await Promise.all([
+      const [first, second] = await Promise.all([
         mcpBridge.getTickets(from, hub, date),
         mcpBridge.getTickets(hub, to, date)
       ]);
-
-      if (!leg1Tickets.length || !leg2Tickets.length) continue;
-
-      const pairs: TrainTicket[] = [];
-      for (const t1 of leg1Tickets.slice(0, 6)) {
-        const arrTime1 = new Date(t1.arrivalAt).getTime();
-        for (const t2 of leg2Tickets.slice(0, 6)) {
-          const depTime2 = new Date(t2.departureAt).getTime();
-          const layoverMin = (depTime2 - arrTime1) / 60000;
-          if (layoverMin >= 30 && layoverMin <= 150) {
-            const totalDuration = (t1.durationMinutes || 120) + (t2.durationMinutes || 120) + Math.round(layoverMin);
-            const transferTicket: TrainTicket = {
-              id: `transfer-${t1.trainCode}-${t2.trainCode}`,
-              trainCode: `${t1.trainCode} ➔ ${t2.trainCode}`,
-              trainNo: `${t1.trainNo}_${t2.trainNo}`,
-              from: t1.from,
-              to: t2.to,
-              departureAt: t1.departureAt,
-              arrivalAt: t2.arrivalAt,
-              durationMinutes: totalDuration,
-              dayDiff: t2.dayDiff || 0,
-              seats: [
-                {
-                  kind: `中转·${hub} (换乘${Math.round(layoverMin)}分)`,
-                  availability: 'available',
-                  count: Math.min(t1.seats?.[0]?.count ?? 9, t2.seats?.[0]?.count ?? 9),
-                  priceMinor: (t1.seats?.[0]?.priceMinor || 0) + (t2.seats?.[0]?.priceMinor || 0),
-                  currency: 'CNY',
-                  rawLabel: `全程约${Math.floor(totalDuration / 60)}小时${totalDuration % 60}分`
-                }
-              ],
-              matchLabels: ['中转推荐', `经由${hub}`],
-              isTransfer: true,
-              transferHub: hub
-            };
-            pairs.push(transferTicket);
-            if (pairs.length >= 2) break;
-          }
-        }
-        if (pairs.length >= 2) break;
-      }
-
-      if (pairs.length > 0) return pairs;
-    } catch (e) {
-      console.warn(`中转查询 ${hub} 失败:`, e);
+      const pairs = pairTransferLegs(first, second, hub);
+      if (pairs.length) return pairs;
+    } catch (error) {
+      console.warn(`中转查询 ${hub} 失败:`, error);
     }
   }
   return [];

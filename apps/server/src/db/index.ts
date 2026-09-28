@@ -211,6 +211,47 @@ export function migrate(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS pi_tasks_project_updated ON pi_tasks(project_id, updated_at DESC);
     CREATE INDEX IF NOT EXISTS pi_runs_task_created ON pi_runs(task_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS pi_events_output ON pi_events(run_id, type, seq);
+
+    CREATE TABLE IF NOT EXISTS ticket_watches (
+      id TEXT PRIMARY KEY,
+      device_id TEXT NOT NULL,
+      train_code TEXT NOT NULL,
+      from_name TEXT NOT NULL,
+      to_name TEXT NOT NULL,
+      seat_kind TEXT NOT NULL DEFAULT '',
+      query_json TEXT NOT NULL,
+      interval_ms INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      baseline TEXT NOT NULL DEFAULT 'unknown',
+      last_availability TEXT,
+      last_count INTEGER,
+      hit_json TEXT,
+      last_error TEXT,
+      next_run_at TEXT NOT NULL,
+      last_run_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS ticket_watches_due ON ticket_watches(status, next_run_at);
+    CREATE INDEX IF NOT EXISTS ticket_watches_device ON ticket_watches(device_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS ticket_purchases (
+      id TEXT PRIMARY KEY,
+      device_id TEXT NOT NULL,
+      train_code TEXT NOT NULL,
+      from_name TEXT NOT NULL,
+      to_name TEXT NOT NULL,
+      seat_kind TEXT NOT NULL DEFAULT '',
+      query_json TEXT NOT NULL,
+      phase TEXT NOT NULL,
+      account_ref TEXT NOT NULL,
+      order_no TEXT,
+      pay_url TEXT,
+      detail TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
   `);
 
   const hostColumns = new Set((db.prepare('PRAGMA table_info(pi_hosts)').all() as Array<{ name: string }>).map((column) => column.name));

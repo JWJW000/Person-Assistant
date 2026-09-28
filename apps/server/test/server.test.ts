@@ -154,4 +154,44 @@ describe('Server HTTP API & Auth Integration', () => {
     expect(json.requiresClarification).toBe(true);
     expect(json.message).toBe('请说明出发城市与到达城市');
   });
+
+  it('creates and lists a ticket watch for the paired device', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/v1/ticket-watches',
+      headers: { authorization: `Bearer ${deviceToken}` },
+      payload: {
+        trainCode: 'G1',
+        seatKind: '二等座',
+        query: {
+          date: '2099-01-01',
+          timezone: 'Asia/Shanghai',
+          from: { kind: 'station', name: '北京南' },
+          to: { kind: 'station', name: '上海虹桥' },
+          trainTypes: [],
+          departMinutes: [0, 1440],
+          onlyAvailable: false,
+          sort: 'departure'
+        }
+      }
+    });
+    expect(created.statusCode).toBe(201);
+    const watch = JSON.parse(created.payload);
+    expect(watch.status).toBe('active');
+    expect(watch.trainCode).toBe('G1');
+
+    const listed = await app.inject({
+      method: 'GET',
+      url: '/v1/ticket-watches',
+      headers: { authorization: `Bearer ${deviceToken}` }
+    });
+    expect(JSON.parse(listed.payload).items).toHaveLength(1);
+
+    const removed = await app.inject({
+      method: 'DELETE',
+      url: `/v1/ticket-watches/${watch.id}`,
+      headers: { authorization: `Bearer ${deviceToken}` }
+    });
+    expect(removed.statusCode).toBe(200);
+  });
 });

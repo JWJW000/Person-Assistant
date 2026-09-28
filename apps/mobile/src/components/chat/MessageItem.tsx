@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { Copy, Check, RotateCcw, ChevronDown, ChevronUp } from 'lucide-react';
 import { TicketCard } from '../TicketCard';
 import type { TrainTicket } from '@assistant/contracts';
+import { compareTickets, hasAvailableSeat, type TicketSort } from '../../lib/ticketView';
 import { cleanDisplayContent } from '../../hooks/useTrainTicketParser';
 
 export interface DisplayMessage {
@@ -27,6 +28,7 @@ export interface MessageItemProps {
   onRegenerate: (id: string | number) => void;
   onToggleExpanded: (id: string | number) => void;
   onViewRoute: (ticket: TrainTicket) => void;
+  onWatch?: (ticket: TrainTicket, seatKind: string) => void;
 }
 
 export const MessageItem = React.memo<MessageItemProps>(
@@ -40,8 +42,16 @@ export const MessageItem = React.memo<MessageItemProps>(
     onRegenerate,
     onToggleExpanded,
     onViewRoute,
+    onWatch,
   }) => {
+    const [onlyAvailable, setOnlyAvailable] = React.useState(false);
+    const [sort, setSort] = React.useState<TicketSort>('departure');
     const isUser = msg.role === 'user';
+    const visibleTickets = React.useMemo(() => {
+      const source = msg.tickets || [];
+      const filtered = onlyAvailable ? source.filter(hasAvailableSeat) : source;
+      return [...filtered].sort(compareTickets(sort));
+    }, [msg.tickets, onlyAvailable, sort]);
 
     return (
       <div className={`${msg.skipAnimation ? '' : 'chat-message-enter'} flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-full min-w-0`}>
@@ -113,21 +123,29 @@ export const MessageItem = React.memo<MessageItemProps>(
             )}
 
             {/* 12306 车票富卡片 */}
-            {msg.tickets && msg.tickets.length > 0 && (() => {
-              const displayTickets = isExpanded ? msg.tickets : msg.tickets.slice(0, 3);
-              const hasMore = msg.tickets.length > 3;
+            {visibleTickets.length > 0 && (() => {
+              const displayTickets = isExpanded ? visibleTickets : visibleTickets.slice(0, 3);
+              const hasMore = visibleTickets.length > 3;
 
               return (
                 <div className="w-full mt-3 flex flex-col gap-2 animate-in fade-in duration-200">
-                  <div className="flex items-center justify-between text-xs text-slate-400 font-mono px-1">
-                    <span>12306 精选合适车次 ({displayTickets.length}/{msg.tickets.length})</span>
-                    <span className="text-[10px]">点击卡片查看时刻表</span>
+                  <div className="flex items-center justify-between gap-2 text-xs text-slate-400 font-mono px-1">
+                    <span>12306 车次 ({displayTickets.length}/{visibleTickets.length})</span>
+                    <div className="flex items-center gap-1">
+                      <button type="button" onClick={() => setOnlyAvailable((value) => !value)} className={`rounded-full px-2 py-0.5 ${onlyAvailable ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>只看有票</button>
+                      {(['departure', 'duration', 'price'] as TicketSort[]).map((key) => (
+                        <button key={key} type="button" onClick={() => setSort(key)} className={`rounded-full px-2 py-0.5 ${sort === key ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
+                          {key === 'departure' ? '出发' : key === 'duration' ? '耗时' : '价格'}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   {displayTickets.map((ticket) => (
                     <TicketCard
                       key={ticket.id}
                       ticket={ticket}
                       onViewRoute={onViewRoute}
+                      onWatch={onWatch}
                     />
                   ))}
 
@@ -144,7 +162,7 @@ export const MessageItem = React.memo<MessageItemProps>(
                       ) : (
                         <>
                           <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
-                          <span>查看其余 {msg.tickets.length - 3} 趟备选车次</span>
+                          <span>查看其余 {visibleTickets.length - 3} 趟备选车次</span>
                         </>
                       )}
                     </button>
@@ -197,7 +215,8 @@ export const MessageItem = React.memo<MessageItemProps>(
       prev.onCopyMessage === next.onCopyMessage &&
       prev.onRegenerate === next.onRegenerate &&
       prev.onToggleExpanded === next.onToggleExpanded &&
-      prev.onViewRoute === next.onViewRoute
+      prev.onViewRoute === next.onViewRoute &&
+      prev.onWatch === next.onWatch
     );
   }
 );

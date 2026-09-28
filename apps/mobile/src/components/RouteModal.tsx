@@ -45,7 +45,7 @@ export const RouteModal: React.FC<RouteModalProps> = ({
         <div className="flex-1 overflow-y-auto py-3 space-y-3">
           {stations.length === 0 ? (
             <div className="py-8 text-center text-xs text-slate-400">
-              暂无经停站详细数据
+              这次结果没有经停站，不能用起终点时刻冒充时刻表。
             </div>
           ) : (
             stations.map((s, index) => {
