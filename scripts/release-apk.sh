@@ -23,7 +23,7 @@ CONF="$MOBILE_DIR/src-tauri/tauri.conf.json"
 
 SERVER_HOST="${SERVER_HOST:?Set SERVER_HOST (e.g. user@your-server)}"
 SERVER_DIR="${SERVER_DIR:-/opt/assistant/updates}"
-PUBLIC_BASE="${PUBLIC_BASE:-https://train.5wjw.cn/updates}"
+PUBLIC_BASE="${PUBLIC_BASE:-https://ai.5wjw.cn/updates}"
 KEYSTORE="${KEYSTORE:-$ANDROID_DIR/assistant-release.keystore}"
 KEYSTORE_PASS="${KEYSTORE_PASS:?Set KEYSTORE_PASS (do not commit this value)}"
 KEY_ALIAS="${KEY_ALIAS:-assistant}"
@@ -131,13 +131,18 @@ PY
 
 cat "$LATEST_JSON"
 echo "==> 上传 APK 与 latest.json 到 $SERVER_HOST:$SERVER_DIR"
-ssh "$SERVER_HOST" "mkdir -p '$SERVER_DIR'"
-scp "$SIGNED" "$SERVER_HOST:$SERVER_DIR/$APK_NAME"
-scp "$LATEST_JSON" "$SERVER_HOST:$SERVER_DIR/latest.json"
+SSH_OPTS=()
+if nc -z 127.0.0.1 7890 2>/dev/null; then
+  SSH_OPTS+=(-o 'ProxyCommand=nc -X 5 -x 127.0.0.1:7890 %h %p')
+fi
+
+ssh "${SSH_OPTS[@]}" "$SERVER_HOST" "mkdir -p '$SERVER_DIR'"
+scp "${SSH_OPTS[@]}" "$SIGNED" "$SERVER_HOST:$SERVER_DIR/$APK_NAME"
+scp "${SSH_OPTS[@]}" "$LATEST_JSON" "$SERVER_HOST:$SERVER_DIR/latest.json"
 rm -f "$LATEST_JSON"
 
-# 保留最近 3 个 APK，避免磁盘堆积
-ssh "$SERVER_HOST" "ls -1t '$SERVER_DIR'/*.apk 2>/dev/null | tail -n +4 | xargs -r rm -f"
+# 保留最近 5 个 APK，避免磁盘堆积
+ssh "${SSH_OPTS[@]}" "$SERVER_HOST" "ls -1t '$SERVER_DIR'/*.apk 2>/dev/null | tail -n +6 | xargs -r rm -f"
 
 echo
 echo "完成：$PUBLIC_BASE/$APK_NAME"

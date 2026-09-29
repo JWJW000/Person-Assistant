@@ -117,10 +117,12 @@ export async function downloadAndInstall(
   if (onProgress) {
     channel.onmessage = (payload) => onProgress(payload);
   }
+  // 自动将源站直连域名平滑切换至 CDN 边缘加速域名，彻底消除跨境 QoS 限速与网络卡死
+  const effectiveUrl = manifest.url.replace('train.5wjw.cn', 'ai.5wjw.cn');
 
   await invoke(`${PLUGIN}|download_and_install`, {
-    url: manifest.url,
-    fileName: fileNameFromUrl(manifest.url),
+    url: effectiveUrl,
+    fileName: fileNameFromUrl(effectiveUrl),
     sha256: manifest.sha256 || null,
     versionName: manifest.version,
     onEvent: channel
