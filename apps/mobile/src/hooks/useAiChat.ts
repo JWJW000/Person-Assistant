@@ -112,6 +112,7 @@ export function useAiChat({
         role: 'assistant',
         content: '',
         isStreaming: true,
+        statusText: activeKbId ? '正在检索知识库相关资料...' : '正在深度思考并组织回答...',
         createTime: new Date().toISOString(),
       };
 
@@ -154,6 +155,7 @@ export function useAiChat({
       // 30ms 流式缓冲区节流聚合，避免单 token 高频渲染导致的 ReactMarkdown AST 重复解析卡顿
       const THROTTLE_MS = 30;
       let accumulated = '';
+      let accumulatedThinking = '';
       let lastFlushTime = 0;
       let pendingRafId: number | null = null;
 
@@ -170,6 +172,7 @@ export function useAiChat({
               ? {
                   ...m,
                   content: textSnapshot,
+                  thinkingContent: accumulatedThinking || m.thinkingContent,
                   isStreaming: !forceFinal,
                   tickets: parsedTickets && parsedTickets.length > 0 ? parsedTickets : m.tickets,
                 }
@@ -197,14 +200,22 @@ export function useAiChat({
             )
           );
         },
-        onThinking: () => {
+        onThinking: (chunk) => {
+          accumulatedThinking += chunk;
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === asstMsgId && !m.content
-                ? { ...m, statusText: '正在深度推理回答中...' }
+              m.id === asstMsgId
+                ? {
+                    ...m,
+                    thinkingContent: accumulatedThinking,
+                    statusText: '正在深度思考推理中...',
+                  }
                 : m
             )
           );
+          if (onScrollToBottom) {
+            requestAnimationFrame(onScrollToBottom);
+          }
         },
         onChunk: (chunk) => {
           accumulated += chunk;

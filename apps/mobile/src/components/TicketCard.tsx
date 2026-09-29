@@ -11,17 +11,21 @@ interface TicketCardProps {
 }
 
 export const TicketCard: React.FC<TicketCardProps> = ({ ticket, onFavorite, onViewRoute, onWatch }) => {
-  const formatTime = (iso: string) => {
+  const formatTime = (iso?: string) => {
+    if (!iso) return '--:--';
     try {
-      return iso.slice(11, 16);
+      return String(iso).slice(11, 16) || '--:--';
     } catch {
       return '--:--';
     }
   };
 
-  const hours = Math.floor(ticket.durationMinutes / 60);
-  const minutes = ticket.durationMinutes % 60;
-
+  const durMin = Number(ticket.durationMinutes) || 0;
+  const hours = Math.floor(durMin / 60);
+  const minutes = durMin % 60;
+  const fromName = ticket.from?.name || '出发站';
+  const toName = ticket.to?.name || '到达站';
+  const seats = Array.isArray(ticket.seats) ? ticket.seats : [];
   return (
     <div
       onClick={() => onViewRoute && onViewRoute(ticket)}
@@ -80,7 +84,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, onFavorite, onVi
             {formatTime(ticket.departureAt)}
           </span>
           <div className="flex items-center gap-1 mt-0.5">
-            <span className="text-xs text-slate-600 font-semibold">{ticket.from.name}</span>
+            <span className="text-xs text-slate-600 font-semibold">{fromName}</span>
           </div>
         </div>
 
@@ -104,14 +108,14 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, onFavorite, onVi
             {formatTime(ticket.arrivalAt)}
           </span>
           <div className="flex items-center gap-1 mt-0.5">
-            <span className="text-xs text-slate-600 font-semibold">{ticket.to.name}</span>
+            <span className="text-xs text-slate-600 font-semibold">{toName}</span>
           </div>
         </div>
       </div>
 
       {/* 席别与余票网格 */}
       <div className="grid grid-cols-4 gap-1.5 pt-2 border-t border-slate-100/90">
-        {ticket.seats.map((seat, i) => {
+        {seats.map((seat, i) => {
           const isAvail = seat.availability === 'available';
           const isWait = seat.availability === 'waitlist';
           const canWatch = Boolean(onWatch && !ticket.scheduleReference && !ticket.isTransfer && !isAvail && seat.availability !== 'not_applicable');

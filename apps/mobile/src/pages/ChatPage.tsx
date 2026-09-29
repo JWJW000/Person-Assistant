@@ -28,6 +28,7 @@ import {
   X,
 } from 'lucide-react';
 import { MessageItem } from '../components/chat/MessageItem';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { useAiChat } from '../hooks/useAiChat';
 
 // 推荐提示卡片 (ChatGPT 风格)
@@ -358,19 +359,20 @@ export const ChatPage: React.FC<ChatPageProps> = ({ onOpenKnowledge, onOpenSetti
           </div>
         ) : (
           messages.map((msg) => (
-            <MessageItem
-              key={msg.id}
-              msg={msg}
-              activeKbId={activeKbId}
-              isExpanded={Boolean(expandedTicketsMap[msg.id])}
-              isCopied={copiedMsgId === msg.id}
-              onCopyText={copyToClipboard}
-              onCopyMessage={handleCopyMessage}
-              onRegenerate={handleRegenerate}
-              onToggleExpanded={handleToggleExpanded}
-              onViewRoute={handleViewRoute}
-              onWatch={handleWatch}
-            />
+            <ErrorBoundary key={msg.id} fallbackTitle="该消息渲染异常">
+              <MessageItem
+                msg={msg}
+                activeKbId={activeKbId}
+                isExpanded={Boolean(expandedTicketsMap[msg.id])}
+                isCopied={copiedMsgId === msg.id}
+                onCopyText={copyToClipboard}
+                onCopyMessage={handleCopyMessage}
+                onRegenerate={handleRegenerate}
+                onToggleExpanded={handleToggleExpanded}
+                onViewRoute={handleViewRoute}
+                onWatch={handleWatch}
+              />
+            </ErrorBoundary>
           ))
         )}
         <div ref={messagesEndRef} />

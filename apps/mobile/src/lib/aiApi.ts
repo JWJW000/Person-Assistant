@@ -305,41 +305,61 @@ export async function streamAiChat(options: StreamChatOptions): Promise<void> {
       buffer = lines.pop() || '';
 
       for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith(':')) continue;
+        const cleanLine = line.endsWith('\r') ? line.slice(0, -1) : line;
 
-        if (trimmed.startsWith('event:')) {
-          currentEvent = trimmed.slice(6).trim();
+        // 注释行 (心跳保活 :ping / 建立连接 :open)
+        if (cleanLine.startsWith(':')) {
           continue;
         }
 
-        if (trimmed.startsWith('data:')) {
-          const dataContent = trimmed.slice(5).trim();
-          if (dataContent === '[DONE]' || currentEvent === 'done') {
+        // 空行表示当前 SSE 事件块结束
+        if (cleanLine === '') {
+          currentEvent = '';
+          continue;
+        }
+
+        if (cleanLine.startsWith('event:')) {
+          currentEvent = cleanLine.slice(6).trim();
+          continue;
+        }
+
+        if (cleanLine.startsWith('data:')) {
+          // 严格遵循 SSE 规范：仅剔除 data: 紧随的一个前导空格，完整保留代码缩进与 Markdown 换行
+          const rawData = cleanLine.startsWith('data: ') ? cleanLine.slice(6) : cleanLine.slice(5);
+
+          if (rawData === '[DONE]' || currentEvent === 'done') {
             onDone();
             return;
           }
           if (currentEvent === 'thinking') {
-            options.onThinking?.(dataContent);
+            options.onThinking?.(rawData);
           } else if (currentEvent === 'status') {
-            options.onStatus?.(dataContent);
+            options.onStatus?.(rawData);
+          } else if (currentEvent === 'error') {
+            onError(new Error(rawData || '模型生成失败'));
+            return;
           } else {
-            onChunk(dataContent);
+            onChunk(rawData);
           }
-          currentEvent = '';
         }
       }
     }
 
-    if (buffer.trim().startsWith('data:')) {
-      const remaining = buffer.trim().slice(5).trim();
-      if (remaining && remaining !== '[DONE]') {
-        if (currentEvent === 'thinking') {
-          options.onThinking?.(remaining);
-        } else if (currentEvent === 'status') {
-          options.onStatus?.(remaining);
-        } else {
-          onChunk(remaining);
+    if (buffer) {
+      const cleanLine = buffer.endsWith('\r') ? buffer.slice(0, -1) : buffer;
+      if (cleanLine.startsWith('data:')) {
+        const remaining = cleanLine.startsWith('data: ') ? cleanLine.slice(6) : cleanLine.slice(5);
+        if (remaining && remaining !== '[DONE]') {
+          if (currentEvent === 'thinking') {
+            options.onThinking?.(remaining);
+          } else if (currentEvent === 'status') {
+            options.onStatus?.(remaining);
+          } else if (currentEvent === 'error') {
+            onError(new Error(remaining));
+            return;
+          } else {
+            onChunk(remaining);
+          }
         }
       }
     }

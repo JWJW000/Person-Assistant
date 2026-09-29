@@ -59,9 +59,28 @@
           </div>
         </div>
 
-        <div v-if="loading && currentStreamingText" class="flex justify-start">
-          <div class="max-w-2xl px-4 py-3 rounded-2xl rounded-bl-none text-sm leading-relaxed break-words bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-100 border border-zinc-200/50 dark:border-zinc-700/50 shadow-sm animate-pulse">
-            <MarkdownViewer :content="currentStreamingText" />
+        <div v-if="loading" class="flex justify-start">
+          <div class="max-w-2xl px-4 py-3 rounded-2xl rounded-bl-none text-sm leading-relaxed break-words bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-100 border border-zinc-200/50 dark:border-zinc-700/50 shadow-sm">
+            <div v-if="!currentStreamingText" class="flex flex-col gap-2 py-1 text-xs text-zinc-400">
+              <div class="flex items-center gap-2">
+                <span class="inline-block w-2 h-2 rounded-full bg-primary animate-ping" />
+                <span>{{ currentStatusText || (currentThinkingText ? '正在深度思考推理中...' : '正在深度思考并组织回答...') }}</span>
+              </div>
+              <div v-if="currentThinkingText" class="pl-2 border-l-2 border-zinc-300 dark:border-zinc-700 font-mono text-[11px] text-zinc-500 whitespace-pre-wrap max-h-32 overflow-y-auto">
+                {{ currentThinkingText }}
+              </div>
+            </div>
+            <div v-else>
+              <details v-if="currentThinkingText" class="mb-2 rounded-lg bg-zinc-200/50 dark:bg-zinc-700/50 p-2 text-xs text-zinc-500">
+                <summary class="cursor-pointer font-medium hover:text-zinc-700 dark:hover:text-zinc-300 select-none">
+                  💭 思考过程 (思考完成)
+                </summary>
+                <div class="mt-1 pt-1 border-t border-zinc-300 dark:border-zinc-700 font-mono text-[11px] leading-relaxed whitespace-pre-wrap max-h-40 overflow-y-auto">
+                  {{ currentThinkingText }}
+                </div>
+              </details>
+              <MarkdownViewer :content="currentStreamingText" />
+            </div>
           </div>
         </div>
       </div>
@@ -86,8 +105,11 @@
 
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue';
+import { useAppConfig } from '@vben/hooks';
+import { useAccessStore } from '@vben/stores';
 import { MarkdownViewer } from '#/components/markdown';
 import { getSessionsApi, createSessionApi, deleteSessionApi, getMessagesApi } from '#/api/ai/chat';
+
 interface SessionItem {
   id: string;
   title: string;
@@ -114,7 +136,12 @@ const messages = ref<MessageItem[]>([]);
 const inputMessage = ref<string>('');
 const loading = ref<boolean>(false);
 const currentStreamingText = ref<string>('');
+const currentThinkingText = ref<string>('');
+const currentStatusText = ref<string>('');
 const chatContainerRef = ref<HTMLElement | null>(null);
+const abortController = ref<AbortController | null>(null);
+const { apiURL, clientId } = useAppConfig(import.meta.env, import.meta.env.PROD);
+const accessStore = useAccessStore();
 
 const scrollToBottom = () => {
   nextTick(() => {
@@ -196,42 +223,118 @@ const handleSendMessage = async () => {
   inputMessage.value = '';
   loading.value = true;
   currentStreamingText.value = '';
+  currentThinkingText.value = '';
+  currentStatusText.value = '';
   scrollToBottom();
 
+  const controller = new AbortController();
+  abortController.value = controller;
+
   try {
-    const url = `/api/ai/chat/stream?sessionId=${encodeURIComponent(currentSessionId.value)}&message=${encodeURIComponent(text)}`;
-    const eventSource = new EventSource(url);
-
-    eventSource.onmessage = (event) => {
-      const chunk = event.data;
-      currentStreamingText.value += chunk;
-      scrollToBottom();
-    };
-
-    eventSource.addEventListener('done', () => {
-      messages.value.push({ role: 'assistant', content: currentStreamingText.value });
-      currentStreamingText.value = '';
-      loading.value = false;
-      eventSource.close();
-      scrollToBottom();
-      loadSessions();
+    const url = `${apiURL}/ai/chat/stream`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        clientid: clientId,
+        Authorization: `Bearer ${accessStore.accessToken || ''}`,
+      },
+      body: JSON.stringify({
+        sessionId: currentSessionId.value,
+        message: text,
+      }),
+      signal: controller.signal,
     });
 
-    eventSource.addEventListener('error', () => {
-      if (currentStreamingText.value) {
-        messages.value.push({ role: 'assistant', content: currentStreamingText.value });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      throw new Error(`服务响应异常 (${res.status}): ${errText}`);
+    }
+
+    if (!res.body) {
+      throw new Error('当前环境不支持流式响应');
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let currentEvent = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const cleanLine = line.endsWith('\r') ? line.slice(0, -1) : line;
+
+        if (cleanLine.startsWith(':')) continue;
+
+        if (cleanLine === '') {
+          currentEvent = '';
+          continue;
+        }
+
+        if (cleanLine.startsWith('event:')) {
+          currentEvent = cleanLine.slice(6).trim();
+          continue;
+        }
+
+        if (cleanLine.startsWith('data:')) {
+          const rawData = cleanLine.startsWith('data: ') ? cleanLine.slice(6) : cleanLine.slice(5);
+
+          if (rawData === '[DONE]' || currentEvent === 'done') {
+            break;
+          }
+          if (currentEvent === 'thinking') {
+            currentThinkingText.value += rawData;
+          } else if (currentEvent === 'status') {
+            currentStatusText.value = rawData;
+          } else if (currentEvent === 'error') {
+            throw new Error(rawData || '模型生成失败');
+          } else {
+            currentStreamingText.value += rawData;
+            scrollToBottom();
+          }
+        }
       }
-      currentStreamingText.value = '';
-      loading.value = false;
-      eventSource.close();
-      scrollToBottom();
-    });
-  } catch (err) {
+    }
+
+    if (currentStreamingText.value || currentThinkingText.value) {
+      messages.value.push({
+        role: 'assistant',
+        content: currentStreamingText.value || currentThinkingText.value,
+      });
+    }
+    currentStreamingText.value = '';
+    currentThinkingText.value = '';
+    currentStatusText.value = '';
     loading.value = false;
-    showToast('error', '流式通道连接异常');
+    scrollToBottom();
+    loadSessions();
+  } catch (err: any) {
+    if (controller.signal.aborted) {
+      return;
+    }
+    loading.value = false;
+    if (currentStreamingText.value) {
+      messages.value.push({ role: 'assistant', content: currentStreamingText.value });
+    } else {
+      messages.value.push({
+        role: 'assistant',
+        content: `（生成中断: ${err?.message || '网络连接异常'}）`,
+      });
+    }
+    currentStreamingText.value = '';
+    currentThinkingText.value = '';
+    currentStatusText.value = '';
+    showToast('error', err?.message || '流式连接异常');
+    scrollToBottom();
   }
 };
-
 onMounted(() => {
   loadSessions();
 });

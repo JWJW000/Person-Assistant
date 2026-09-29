@@ -149,3 +149,14 @@ App admin 账号下已出现“云服务器管理”项目，ID `cbf15754-dff4-4
 
 全量测试 20/20 文件、78/78 测试用例通过；类型检查通过。Android release 构建签名通过。
 versionCode `17016`，APK SHA-256 `0af659270001aa173fde9be4264be4120d913fd883871afc8ef8606017dad2ca`；下载地址：https://train.5wjw.cn/updates/personal-ai-assistant-v0.17.16-aarch64.apk 。更新清单：https://train.5wjw.cn/updates/latest.json 。
+### 流式响应白屏修复与思维链实时展示（0.17.18）
+
+全面修复流式响应中的异常崩溃与白屏问题：
+1. 引入 React `ErrorBoundary` 错误边界，隔离组件级渲染异常，根治未捕获异常导致的顶层白屏崩溃；
+2. 标准化车票与 JSON 解析校验 (`normalizeTicket`)，防御非标准大模型车次结构与 `undefined` 字段；
+3. 严格保护 `cleanDisplayContent`，杜绝流式接收中贪婪剥除未闭合代码块导致正文空白；
+4. 移动端与 Web 端全面支持思维链 (`reasoning_content`) 实时展示与折叠收纳，规范阶段化状态提示；
+5. 后端 SSE 写入全局同步锁保障线程安全，杜绝并发心跳造成连接中断。
+
+全量测试通过；Android release 构建对齐与签名通过。
+versionCode `17018`，APK SHA-256 `b976ad8f89f34e8e529dc2955b076afdf9510f7cf0ff2bc2590c1def195440be`；下载地址：https://train.5wjw.cn/updates/personal-ai-assistant-v0.17.18-aarch64.apk 。更新清单：https://train.5wjw.cn/updates/latest.json 。

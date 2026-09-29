@@ -166,13 +166,17 @@ public class AiChatServiceImpl implements IAiChatService {
         CompletableFuture.runAsync(() -> {
             // 立即发送初始化注释行，促使 Spring/Jetty 立即将 HTTP 200 及 text/event-stream 响应头下发给 Nginx/Cloudflare/客户端
             try {
-                emitter.send(SseEmitter.event().comment("open"));
+                synchronized (emitter) {
+                    emitter.send(SseEmitter.event().comment("open"));
+                }
             } catch (Exception ignored) {}
 
             ScheduledExecutorService heartbeatExecutor = Executors.newSingleThreadScheduledExecutor();
             heartbeatExecutor.scheduleAtFixedRate(() -> {
                 try {
-                    emitter.send(SseEmitter.event().comment("ping"));
+                    synchronized (emitter) {
+                        emitter.send(SseEmitter.event().comment("ping"));
+                    }
                 } catch (Exception ignored) {}
             }, 2, 2, TimeUnit.SECONDS);
 
@@ -239,7 +243,9 @@ public class AiChatServiceImpl implements IAiChatService {
                 if (kbId != null && kbId > 0) {
                     try {
                         try {
-                            emitter.send(SseEmitter.event().name("status").data("正在检索知识库..."));
+                            synchronized (emitter) {
+                                emitter.send(SseEmitter.event().name("status").data("正在检索知识库相关资料..."));
+                            }
                         } catch (Exception ignored) {}
                         ragChunks = knowledgeService.searchChunks(kbId, userMessage, 3, 0.2);
                         if (ragChunks != null && !ragChunks.isEmpty()) {
@@ -276,6 +282,11 @@ public class AiChatServiceImpl implements IAiChatService {
 
                             ctx.append("【特别提醒】：请直接作答，严禁出现“根据知识库”、“根据记录”等字眼！\n\n").append("【用户问题】:\n").append(userMessage);
                             promptToSend = ctx.toString();
+                            try {
+                                synchronized (emitter) {
+                                    emitter.send(SseEmitter.event().name("status").data("已匹配 " + ragChunks.size() + " 条知识库切片，正在深度思考..."));
+                                }
+                            } catch (Exception ignored) {}
                         }
                     } catch (Exception e) {
                         log.warn("知识库向量检索异常: {}", e.getMessage());
@@ -287,7 +298,9 @@ public class AiChatServiceImpl implements IAiChatService {
                 if (shouldQueryTrain) {
                     try {
                         try {
-                            emitter.send(SseEmitter.event().name("status").data("正在查询 12306 实时车票..."));
+                            synchronized (emitter) {
+                                emitter.send(SseEmitter.event().name("status").data("正在查询 12306 实时车票..."));
+                            }
                         } catch (Exception ignored) {}
                         String mcpResp = callMcpTrainQuery(userMessage, history, userProfileForMcp);
                         if (StringUtils.isNotBlank(mcpResp)) {
@@ -343,6 +356,11 @@ public class AiChatServiceImpl implements IAiChatService {
                                         tb.append("\n");
                                     }
                                     mcpSummary = tb.toString();
+                                    try {
+                                        synchronized (emitter) {
+                                            emitter.send(SseEmitter.event().name("status").data("车票查询完成，正在精选推荐车次并组织回答..."));
+                                        }
+                                    } catch (Exception ignored) {}
                                 }
                             }
                         }
@@ -407,7 +425,9 @@ public class AiChatServiceImpl implements IAiChatService {
                     
                     for (char c : tip.toCharArray()) {
                         try {
-                            emitter.send(SseEmitter.event().data(String.valueOf(c)));
+                            synchronized (emitter) {
+                                emitter.send(SseEmitter.event().data(String.valueOf(c)));
+                            }
                         } catch (Exception ignored) {
                             break;
                         }
@@ -415,19 +435,27 @@ public class AiChatServiceImpl implements IAiChatService {
                         Thread.sleep(15);
                     }
                     try {
-                        emitter.send(SseEmitter.event().name("done").data("[DONE]"));
-                        emitter.complete();
+                        synchronized (emitter) {
+                            emitter.send(SseEmitter.event().name("done").data("[DONE]"));
+                            emitter.complete();
+                        }
                     } catch (Exception ignored) {}
                 } else {
+                    try {
+                        synchronized (emitter) {
+                            emitter.send(SseEmitter.event().name("status").data("正在深度思考并组织回答..."));
+                        }
+                    } catch (Exception ignored) {}
                     // 调用兼容 OpenAI 协议的流式接口 (DeepSeek / OpenAI 等)
                     callOpenAiCompatibleStream(config, hermesSnapshot, history, promptToSend, emitter, assistantReply);
                 }
-
             } catch (Exception e) {
                 log.error("流式调用大模型失败", e);
                 try {
-                    emitter.send(SseEmitter.event().name("error").data("生成失败: " + e.getMessage()));
-                    emitter.completeWithError(e);
+                    synchronized (emitter) {
+                        emitter.send(SseEmitter.event().name("error").data("生成失败: " + e.getMessage()));
+                        emitter.completeWithError(e);
+                    }
                 } catch (Exception ignored) {
                 }
             } finally {
@@ -654,21 +682,23 @@ public class AiChatServiceImpl implements IAiChatService {
             String errorMsg = "上游模型调用失败 [" + status + "]: " + errBody;
             log.error(errorMsg);
             try {
-                emitter.send(SseEmitter.event().name("error").data(errorMsg));
-            } catch (Exception ignored) {}
-            try {
-                emitter.complete();
+                synchronized (emitter) {
+                    emitter.send(SseEmitter.event().name("error").data(errorMsg));
+                    emitter.complete();
+                }
             } catch (Exception ignored) {}
             return;
         }
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
             String line;
             while ((line = reader.readLine()) != null) {
-                if (line.startsWith("data: ")) {
-                    String data = line.substring(6).trim();
+                if (line.startsWith("data:")) {
+                    String data = line.startsWith("data: ") ? line.substring(6).trim() : line.substring(5).trim();
                     if ("[DONE]".equals(data)) {
                         try {
-                            emitter.send(SseEmitter.event().name("done").data("[DONE]"));
+                            synchronized (emitter) {
+                                emitter.send(SseEmitter.event().name("done").data("[DONE]"));
+                            }
                         } catch (Exception ignored) {}
                         break;
                     }
@@ -683,7 +713,9 @@ public class AiChatServiceImpl implements IAiChatService {
                                     String reasoning = delta.getStr("reasoning_content");
                                     if (StringUtils.isNotBlank(reasoning)) {
                                         try {
-                                            emitter.send(SseEmitter.event().name("thinking").data(reasoning));
+                                            synchronized (emitter) {
+                                                emitter.send(SseEmitter.event().name("thinking").data(reasoning));
+                                            }
                                         } catch (Exception sseEx) {
                                             log.warn("SSE 客户端连接中断: {}", sseEx.getMessage());
                                             break;
@@ -696,7 +728,9 @@ public class AiChatServiceImpl implements IAiChatService {
                                     if (content != null) {
                                         assistantReply.append(content);
                                         try {
-                                            emitter.send(SseEmitter.event().data(content));
+                                            synchronized (emitter) {
+                                                emitter.send(SseEmitter.event().data(content));
+                                            }
                                         } catch (Exception sseEx) {
                                             log.warn("SSE 客户端连接中断: {}", sseEx.getMessage());
                                             break;
@@ -711,7 +745,9 @@ public class AiChatServiceImpl implements IAiChatService {
             }
         }
         try {
-            emitter.complete();
+            synchronized (emitter) {
+                emitter.complete();
+            }
         } catch (Exception ignored) {}
-    }
+}
 }

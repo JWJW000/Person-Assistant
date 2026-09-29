@@ -3,6 +3,7 @@ import type { Seat, TrainTicket } from '@assistant/contracts';
 export type TicketSort = 'departure' | 'duration' | 'price';
 
 export function seatLabel(seat: Seat): string {
+  if (!seat) return '未知';
   if (seat.availability === 'available') {
     return seat.count != null && seat.count > 0 ? `${seat.count}张` : '有';
   }
@@ -13,8 +14,9 @@ export function seatLabel(seat: Seat): string {
 }
 
 export function headlineSeat(ticket: TrainTicket): Seat | undefined {
+  if (!ticket || !Array.isArray(ticket.seats)) return undefined;
   return ticket.seats
-    .filter((seat) => seat.availability === 'available' && seat.priceMinor != null && (seat.count == null || seat.count > 0))
+    .filter((seat) => seat && seat.availability === 'available' && seat.priceMinor != null && (seat.count == null || seat.count > 0))
     .reduce<Seat | undefined>((best, seat) => (!best || (seat.priceMinor ?? Infinity) < (best.priceMinor ?? Infinity) ? seat : best), undefined);
 }
 
@@ -25,17 +27,22 @@ export function formatYuan(priceMinor: number | null | undefined): string | null
 }
 
 export function hasAvailableSeat(ticket: TrainTicket): boolean {
-  return ticket.seats.some((seat) => seat.availability === 'available' && (seat.count == null || seat.count > 0));
+  if (!ticket || !Array.isArray(ticket.seats)) return false;
+  return ticket.seats.some((seat) => seat && seat.availability === 'available' && (seat.count == null || seat.count > 0));
 }
 
 export function compareTickets(sort: TicketSort): (a: TrainTicket, b: TrainTicket) => number {
-  if (sort === 'duration') return (a, b) => a.durationMinutes - b.durationMinutes || Date.parse(a.departureAt) - Date.parse(b.departureAt);
+  if (sort === 'duration') {
+    return (a, b) =>
+      (a.durationMinutes || 0) - (b.durationMinutes || 0) ||
+      (Date.parse(a.departureAt || '') || 0) - (Date.parse(b.departureAt || '') || 0);
+  }
   if (sort === 'price') {
     return (a, b) => {
       const left = headlineSeat(a)?.priceMinor ?? Number.MAX_SAFE_INTEGER;
       const right = headlineSeat(b)?.priceMinor ?? Number.MAX_SAFE_INTEGER;
-      return left - right || Date.parse(a.departureAt) - Date.parse(b.departureAt);
+      return left - right || (Date.parse(a.departureAt || '') || 0) - (Date.parse(b.departureAt || '') || 0);
     };
   }
-  return (a, b) => Date.parse(a.departureAt) - Date.parse(b.departureAt);
+  return (a, b) => (Date.parse(a.departureAt || '') || 0) - (Date.parse(b.departureAt || '') || 0);
 }

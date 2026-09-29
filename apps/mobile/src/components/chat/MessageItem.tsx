@@ -11,6 +11,7 @@ export interface DisplayMessage {
   id: string | number;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  thinkingContent?: string;
   tickets?: TrainTicket[];
   isStreaming?: boolean;
   statusText?: string;
@@ -35,7 +36,7 @@ export interface MessageItemProps {
 export const MessageItem = React.memo<MessageItemProps>(
   ({
     msg,
-    activeKbId,
+    activeKbId: _activeKbId,
     isExpanded,
     isCopied,
     onCopyText,
@@ -63,18 +64,38 @@ export const MessageItem = React.memo<MessageItemProps>(
         ) : (
           <div className="w-full max-w-full min-w-0 text-[15px] leading-[1.7] text-[#0D0D0D] select-text">
             {msg.isStreaming && !msg.content ? (
-              <div className="flex items-center gap-2 py-2 select-none">
-                <div className="flex items-center gap-1 shrink-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-wave-1" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-wave-2" />
-                  <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-wave-3" />
+              <div className="flex flex-col gap-2 py-2 select-none">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-wave-1" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-wave-2" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-wave-3" />
+                  </div>
+                  <span className="font-mono text-xs text-slate-500">
+                    {msg.statusText || '正在深度思考并组织回答...'}
+                  </span>
                 </div>
-                <span className="font-mono text-xs text-slate-400">
-                  {msg.statusText || (activeKbId ? '正在检索知识库并思考...' : '正在深度思考并组织回答...')}
-                </span>
+                {msg.thinkingContent && (
+                  <div className="pl-3 border-l-2 border-slate-200 text-xs text-slate-400 font-mono whitespace-pre-wrap max-h-32 overflow-y-auto leading-relaxed">
+                    {msg.thinkingContent}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="prose prose-slate max-w-full overflow-hidden text-[#0D0D0D] break-words [word-break:break-word] prose-p:my-2 prose-headings:my-2.5 prose-pre:my-2">
+                {msg.thinkingContent && (
+                  <details className="not-prose mb-3 rounded-xl bg-slate-50 border border-slate-200/60 p-2.5 text-xs text-slate-500 select-none group">
+                    <summary className="cursor-pointer font-medium text-slate-600 flex items-center gap-1.5 hover:text-slate-800 transition-colors">
+                      <span>💭 思考过程</span>
+                      <span className="text-[10px] text-slate-400 font-normal">
+                        ({msg.isStreaming ? '思考中…' : '已完成思考'})
+                      </span>
+                    </summary>
+                    <div className="mt-2 pt-2 border-t border-slate-200/60 font-mono text-[11px] leading-relaxed text-slate-500 whitespace-pre-wrap select-text max-h-48 overflow-y-auto">
+                      {msg.thinkingContent}
+                    </div>
+                  </details>
+                )}
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={{
@@ -207,10 +228,9 @@ export const MessageItem = React.memo<MessageItemProps>(
   (prev, next) => {
     return (
       prev.msg.content === next.msg.content &&
+      prev.msg.thinkingContent === next.msg.thinkingContent &&
       prev.msg.isStreaming === next.msg.isStreaming &&
       prev.msg.statusText === next.msg.statusText &&
-      prev.msg.tickets === next.msg.tickets &&
-      prev.isExpanded === next.isExpanded &&
       prev.isCopied === next.isCopied &&
       prev.activeKbId === next.activeKbId &&
       prev.onCopyText === next.onCopyText &&
